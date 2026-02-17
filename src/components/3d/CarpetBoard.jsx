@@ -899,44 +899,52 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
         aiImg.src = aiDataUrl;
     }, []);
 
-    // AI Blend: Orijinal çizim üzerine AI'ı HAFIF overlay (max %35) + enhancement
+    // AI Blend: AI kilim motifini çizimin YERİNE koy (replace, overlay değil)
     const startAIBlend = useCallback((ctx, aiImg, userName, x, y, width, height) => {
-        const blendSteps = 6;
+        const blendSteps = 8;
         let step = 0;
 
         const blendInterval = setInterval(() => {
             if (step >= blendSteps) {
                 clearInterval(blendInterval);
 
-                // SON ADIM: AI overlay (max MAX_AI_BLEND opacity)
+                // SON ADIM: Orijinali SİL, AI motifini tam yerleştir
                 ctx.save();
-                ctx.globalAlpha = MAX_AI_BLEND;
+                ctx.clearRect(x, y, width, height);
+                ctx.globalAlpha = 1.0;
                 ctx.globalCompositeOperation = 'source-over';
                 ctx.drawImage(aiImg, x, y, width, height);
                 ctx.restore();
 
-                // 🎨 Dokuma enhancement uygula (mozaik + renk + çerçeve)
-                applyWovenEnhancement(ctx, x, y, width, height);
-
-                // ✍️ İsim render
+                // ✍️ İsim render (enhancement yapma — AI zaten motif)
                 renderWovenName(ctx, userName, x, y, width, height);
 
                 needsUpdateRef.current = true;
-                console.log(`✨ AI + enhancement tamamlandı! (blend: ${MAX_AI_BLEND})`);
+                console.log(`✨ AI kilim motifi yerleştirildi! (${width}x${height})`);
                 return;
             }
 
-            // Kademeli blend: 0 → MAX_AI_BLEND arası
-            const alpha = ((step + 1) / blendSteps) * MAX_AI_BLEND;
+            // Kademeli geçiş: orijinal → AI motif
+            const progress = (step + 1) / blendSteps;
             ctx.save();
-            ctx.globalAlpha = alpha;
+            // Orijinali kademeli sil
+            ctx.globalAlpha = progress * 0.15;
+            ctx.globalCompositeOperation = 'destination-out';
+            ctx.fillStyle = 'white';
+            ctx.fillRect(x, y, width, height);
+            ctx.restore();
+
+            // AI motifi kademeli ekle
+            ctx.save();
+            ctx.globalAlpha = progress;
             ctx.globalCompositeOperation = 'source-over';
             ctx.drawImage(aiImg, x, y, width, height);
             ctx.restore();
+
             needsUpdateRef.current = true;
             step++;
-        }, 70);
-    }, [renderWovenName, applyWovenEnhancement]);
+        }, 80);
+    }, [renderWovenName]);
 
     // 🧵 Kilim tarzı dekoratif çerçeve (orijinal çizime dokunmadan kenar ekler)
     const applyKilimBorder = useCallback((ctx, x, y, width, height) => {
