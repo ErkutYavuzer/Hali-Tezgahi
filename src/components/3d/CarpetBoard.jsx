@@ -853,11 +853,17 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
             clearInterval(spinningLightsRef.current[drawingId]);
         }
 
-        // Orijinal çizim snapshot'ı al (ışık üzerine çizince bozulmasın diye)
+        // Orijinal çizim snapshot'ı al — geniş alan (çizim taşması dahil)
         const ctx = offscreenCtxRef.current;
-        if (!ctx) return;
-        const snapshot = ctx.getImageData(x, y, width, height);
-        drawingSnapshotsRef.current[drawingId] = { snapshot, x, y, width, height };
+        const canvas = offscreenCanvasRef.current;
+        if (!ctx || !canvas) return;
+        const pad = Math.max(width, height) * 0.5;
+        const snapX = Math.max(0, Math.floor(x - pad));
+        const snapY = Math.max(0, Math.floor(y - pad));
+        const snapW = Math.min(canvas.width - snapX, Math.ceil(width + pad * 2));
+        const snapH = Math.min(canvas.height - snapY, Math.ceil(height + pad * 2));
+        const snapshot = ctx.getImageData(snapX, snapY, snapW, snapH);
+        drawingSnapshotsRef.current[drawingId] = { snapshot, x: snapX, y: snapY, width: snapW, height: snapH };
 
         let angle = 0;
         const cx = x + width / 2;
@@ -941,17 +947,46 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
         const aiImg = new Image();
         aiImg.crossOrigin = 'anonymous';
         aiImg.onload = () => {
-            // Parlak flash efekti (dönüşüm anı)
+            // Orijinal çizimin dışarı taşan kısımlarını temizlemek için
+            // motif alanından %50 daha geniş bir alanı temizle
+            const pad = Math.max(width, height) * 0.5;
+            const clearX = Math.max(0, x - pad);
+            const clearY = Math.max(0, y - pad);
+            const canvas = offscreenCanvasRef.current;
+            const clearW = Math.min(canvas.width - clearX, width + pad * 2);
+            const clearH = Math.min(canvas.height - clearY, height + pad * 2);
+
+            // Parlak flash efekti (dönüşüm anı) — geniş alan
             ctx.save();
             ctx.fillStyle = 'rgba(255, 235, 180, 0.7)';
-            ctx.fillRect(x, y, width, height);
+            ctx.fillRect(clearX, clearY, clearW, clearH);
             ctx.restore();
             needsUpdateRef.current = true;
 
-            // 200ms sonra: orijinali sil, AI motifini koy
+            // 200ms sonra: geniş alanı temizle, halı zemin + AI motifi koy
             setTimeout(() => {
                 ctx.save();
-                ctx.clearRect(x, y, width, height);
+                // Geniş alanı tamamen temizle (orijinal çizim kalıntıları dahil)
+                ctx.clearRect(clearX, clearY, clearW, clearH);
+                // Halı zemin rengini geri koy (temizlenen alan için)
+                ctx.fillStyle = '#f0e4d0';
+                ctx.fillRect(clearX, clearY, clearW, clearH);
+                // Hafif iplik grid geri çiz
+                ctx.strokeStyle = 'rgba(80,50,20,0.03)';
+                ctx.lineWidth = 0.3;
+                for (let gx = Math.floor(clearX / 4) * 4; gx < clearX + clearW; gx += 4) {
+                    ctx.beginPath();
+                    ctx.moveTo(gx, clearY);
+                    ctx.lineTo(gx, clearY + clearH);
+                    ctx.stroke();
+                }
+                for (let gy = Math.floor(clearY / 4) * 4; gy < clearY + clearH; gy += 4) {
+                    ctx.beginPath();
+                    ctx.moveTo(clearX, gy);
+                    ctx.lineTo(clearX + clearW, gy);
+                    ctx.stroke();
+                }
+                // AI motifini yerleştir
                 ctx.globalAlpha = 1.0;
                 ctx.drawImage(aiImg, x, y, width, height);
                 ctx.restore();
