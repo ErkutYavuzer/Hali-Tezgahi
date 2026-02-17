@@ -659,12 +659,8 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
                 ctx.restore();
                 needsUpdateRef.current = true;
 
-                // 2️⃣ 🎨 Dokuma enhancement uygula (mozaik + renk + çerçeve)
-                try {
-                    applyWovenEnhancement(ctx, drawing.x, drawing.y, drawing.width, drawing.height);
-                } catch (enhErr) {
-                    console.warn('⚠️ Enhancement hatası (çizim görünür):', enhErr.message);
-                }
+                // 2️⃣ Enhancement kaldırıldı — AI motif dönüşümü yapacak
+                // Çizim olduğu gibi gösterilir, Gemini dönüştürünce değişir
 
                 // 3️⃣ ✍️ İsim render
                 try {
@@ -683,7 +679,7 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
             console.error('❌ drawWovenImage resim yüklenemedi!', drawing.id, e);
         };
         img.src = drawing.dataUrl;
-    }, [renderWovenName, applyWovenEnhancement]);
+    }, [renderWovenName]);
 
     // =====================================================================
     // 🚀 UÇAN PİKSEL SİSTEMİ — Çizimden 3D parçacıklara
@@ -837,24 +833,21 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
             pendingEnhancementsRef.current[drawingId] = setTimeout(() => {
                 const ctx = offscreenCtxRef.current;
                 if (ctx) {
-                    try {
-                        applyWovenEnhancement(ctx, drawing.x, drawing.y, drawing.width, drawing.height);
-                    } catch (enhErr) {
-                        console.warn('⚠️ Enhancement hatası (pikseller görünür):', enhErr.message);
-                    }
+                    // Enhancement kaldırıldı — AI dönüşümü yapacak
+                    // Sadece isim yaz
                     try {
                         renderWovenName(ctx, drawing.userName, drawing.x, drawing.y, drawing.width, drawing.height);
                     } catch (nameErr) {
                         console.warn('⚠️ İsim yazma hatası:', nameErr.message);
                     }
                     needsUpdateRef.current = true;
-                    console.log(`🎨 Enhancement + isim: ${drawing.userName} (${drawingId.substring(0, 15)})`);
+                    console.log(`🎨 İsim eklendi: ${drawing.userName} (${drawingId.substring(0, 15)})`);
                 }
                 delete pendingEnhancementsRef.current[drawingId];
             }, estimatedLandTime);
         };
         img.src = drawing.dataUrl;
-    }, [canvasToWorld, carpetWidth, carpetDepth, renderWovenName, applyWovenEnhancement]);
+    }, [canvasToWorld, carpetWidth, carpetDepth, renderWovenName]);
 
     // 🛬 Piksel konduğunda — canvas'a canlı renk + glow olarak çiz
     const handleLand = useCallback((item) => {
