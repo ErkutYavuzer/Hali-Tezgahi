@@ -67,7 +67,7 @@ export default function HostPage() {
   }, []);
 
   useEffect(() => {
-    const socketUrl = window.location.protocol + "//" + window.location.hostname + ":3003";
+    const socketUrl = window.location.origin;
     const newSocket = io(socketUrl, {
       transports: ['polling', 'websocket'],
       upgrade: true
@@ -75,11 +75,10 @@ export default function HostPage() {
     setSocket(newSocket);
 
     newSocket.on('server-ip', ({ ip }) => {
-      const protocol = window.location.protocol;
-      const host = ip === 'localhost' ? 'localhost' : ip;
-      serverIpRef.current = host; // IP'yi sakla
-      const appPort = window.location.port || '3002';
-      const clientUrl = `${protocol}//${host}:${appPort}/?role=client`;
+      serverIpRef.current = ip; // Lokal referans için sakla
+      // K8s/Ingress: Her zaman browser origin'i kullan (hali-mozaik.mindops.net)
+      const origin = window.location.origin;
+      const clientUrl = `${origin}/?role=client`;
       const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(clientUrl)}`;
       setQrImageURL(qrUrl);
     });
@@ -102,10 +101,9 @@ export default function HostPage() {
           const imageData = canvas.toDataURL('image/png');
           newSocket.emit('carpet-image-save', imageData);
 
-          // İndirme QR kodu oluştur — sunucu IP'si ile (localhost değil!)
-          const appPort = window.location.port || '3002';
-          const host = serverIpRef.current || window.location.hostname;
-          const downloadUrl = `${window.location.protocol}//${host}:${appPort}/?role=download`;
+          // İndirme QR kodu oluştur — browser origin kullan (K8s uyumlu)
+          const origin = window.location.origin;
+          const downloadUrl = `${origin}/?role=download`;
           const qr = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(downloadUrl)}`;
           setDownloadQrUrl(qr);
         }
@@ -407,10 +405,9 @@ export default function HostPage() {
             <>
               <button onClick={() => {
                 if (!showDownloadQr) {
-                  // QR URL oluştur
-                  const appPort = window.location.port || '3002';
-                  const host = serverIpRef.current || window.location.hostname;
-                  const downloadUrl = `${window.location.protocol}//${host}:${appPort}/?role=download`;
+                  // QR URL oluştur — browser origin kullan (K8s uyumlu)
+                  const origin = window.location.origin;
+                  const downloadUrl = `${origin}/?role=download`;
                   const qr = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(downloadUrl)}`;
                   setDownloadQrUrl(qr);
 

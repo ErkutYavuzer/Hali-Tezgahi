@@ -8,7 +8,7 @@ export default function DownloadPage() {
 
     useEffect(() => {
         // Socket.io ile sunucuya bağlan (zaten çalışan bağlantı, firewall sorunu yok)
-        const serverUrl = window.location.protocol + "//" + window.location.hostname + ":3003";
+        const serverUrl = window.location.origin;
         const socket = io(serverUrl, {
             transports: ['polling', 'websocket'],
             upgrade: true

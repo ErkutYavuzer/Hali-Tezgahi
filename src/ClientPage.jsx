@@ -101,7 +101,7 @@ export default function ClientPage() {
 
   // Socket bağlantısı
   useEffect(() => {
-    const socketUrl = window.location.protocol + "//" + window.location.hostname + ":3003";
+    const socketUrl = window.location.origin;
     socketRef.current = io(socketUrl, {
       transports: ['polling', 'websocket'],
       reconnectionAttempts: 10,

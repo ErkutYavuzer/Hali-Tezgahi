@@ -43,6 +43,9 @@ app.use((req, res, next) => {
 // Test endpoint
 app.get('/', (req, res) => res.send('🦅 Halı Tezgahı Sunucusu çalışıyor!'));
 
+// Health check for K8s
+app.get('/health', (req, res) => res.json({ status: 'ok', uptime: process.uptime() }));
+
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {

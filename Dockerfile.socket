@@ -1,0 +1,16 @@
+FROM node:20-alpine
+WORKDIR /app
+
+# Install dependencies
+COPY package*.json ./
+RUN npm ci --omit=dev
+
+# Copy server files
+COPY server/ ./server/
+
+# Data directory for carpet state persistence
+RUN mkdir -p /app/data
+ENV DATA_DIR=/app/data
+
+EXPOSE 3003
+CMD ["node", "server/index.js"]
