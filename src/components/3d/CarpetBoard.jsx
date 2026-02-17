@@ -611,21 +611,34 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
         img.crossOrigin = 'anonymous';
         img.onload = () => {
             console.log(`✅ drawWovenImage resim yüklendi: ${drawing.width}x${drawing.height}`);
-            // 1️⃣ Önce çizimi tam çözünürlükte direkt yapıştır
-            ctx.save();
-            ctx.globalAlpha = 1.0;
-            ctx.globalCompositeOperation = 'source-over';
-            ctx.drawImage(img, drawing.x, drawing.y, drawing.width, drawing.height);
-            ctx.restore();
+            try {
+                // 1️⃣ Önce çizimi tam çözünürlükte direkt yapıştır
+                ctx.save();
+                ctx.globalAlpha = 1.0;
+                ctx.globalCompositeOperation = 'source-over';
+                ctx.drawImage(img, drawing.x, drawing.y, drawing.width, drawing.height);
+                ctx.restore();
+                needsUpdateRef.current = true;
 
-            // 2️⃣ 🎨 Dokuma enhancement uygula (mozaik + renk + çerçeve)
-            applyWovenEnhancement(ctx, drawing.x, drawing.y, drawing.width, drawing.height);
+                // 2️⃣ 🎨 Dokuma enhancement uygula (mozaik + renk + çerçeve)
+                try {
+                    applyWovenEnhancement(ctx, drawing.x, drawing.y, drawing.width, drawing.height);
+                } catch (enhErr) {
+                    console.warn('⚠️ Enhancement hatası (çizim görünür):', enhErr.message);
+                }
 
-            // 3️⃣ ✍️ İsim render
-            renderWovenName(ctx, drawing.userName, drawing.x, drawing.y, drawing.width, drawing.height);
+                // 3️⃣ ✍️ İsim render
+                try {
+                    renderWovenName(ctx, drawing.userName, drawing.x, drawing.y, drawing.width, drawing.height);
+                } catch (nameErr) {
+                    console.warn('⚠️ İsim yazma hatası:', nameErr.message);
+                }
 
-            needsUpdateRef.current = true;
-            console.log(`✅ drawWovenImage + enhancement tamamlandı: ${drawing.id?.substring(0, 15)}`);
+                needsUpdateRef.current = true;
+                console.log(`✅ drawWovenImage tamamlandı: ${drawing.id?.substring(0, 15)}`);
+            } catch (err) {
+                console.error('❌ drawWovenImage genel hata:', err);
+            }
         };
         img.onerror = (e) => {
             console.error('❌ drawWovenImage resim yüklenemedi!', drawing.id, e);
@@ -785,8 +798,16 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
             pendingEnhancementsRef.current[drawingId] = setTimeout(() => {
                 const ctx = offscreenCtxRef.current;
                 if (ctx) {
-                    applyWovenEnhancement(ctx, drawing.x, drawing.y, drawing.width, drawing.height);
-                    renderWovenName(ctx, drawing.userName, drawing.x, drawing.y, drawing.width, drawing.height);
+                    try {
+                        applyWovenEnhancement(ctx, drawing.x, drawing.y, drawing.width, drawing.height);
+                    } catch (enhErr) {
+                        console.warn('⚠️ Enhancement hatası (pikseller görünür):', enhErr.message);
+                    }
+                    try {
+                        renderWovenName(ctx, drawing.userName, drawing.x, drawing.y, drawing.width, drawing.height);
+                    } catch (nameErr) {
+                        console.warn('⚠️ İsim yazma hatası:', nameErr.message);
+                    }
                     needsUpdateRef.current = true;
                     console.log(`🎨 Enhancement + isim: ${drawing.userName} (${drawingId.substring(0, 15)})`);
                 }
@@ -863,37 +884,45 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
         const aiImg = new Image();
         aiImg.crossOrigin = 'anonymous';
         aiImg.onload = () => {
-            // Geniş alan temizle (orijinal çizim taşması dahil)
-            const pad = Math.max(width, height) * 0.5;
-            const clearX = Math.max(0, x - pad);
-            const clearY = Math.max(0, y - pad);
-            const clearW = Math.min(canvas.width - clearX, width + pad * 2);
-            const clearH = Math.min(canvas.height - clearY, height + pad * 2);
+            try {
+                // Geniş alan temizle (orijinal çizim taşması dahil)
+                const pad = Math.max(width, height) * 0.5;
+                const clearX = Math.max(0, x - pad);
+                const clearY = Math.max(0, y - pad);
+                const clearW = Math.min(canvas.width - clearX, width + pad * 2);
+                const clearH = Math.min(canvas.height - clearY, height + pad * 2);
 
-            ctx.save();
-            // Alanı temizle
-            ctx.clearRect(clearX, clearY, clearW, clearH);
-            // Halı zemin geri koy
-            ctx.fillStyle = '#f0e4d0';
-            ctx.fillRect(clearX, clearY, clearW, clearH);
-            // İplik grid
-            ctx.strokeStyle = 'rgba(80,50,20,0.03)';
-            ctx.lineWidth = 0.3;
-            for (let gx = Math.floor(clearX / 4) * 4; gx < clearX + clearW; gx += 4) {
-                ctx.beginPath(); ctx.moveTo(gx, clearY); ctx.lineTo(gx, clearY + clearH); ctx.stroke();
-            }
-            for (let gy = Math.floor(clearY / 4) * 4; gy < clearY + clearH; gy += 4) {
-                ctx.beginPath(); ctx.moveTo(clearX, gy); ctx.lineTo(clearX + clearW, gy); ctx.stroke();
-            }
-            // AI motifini yerleştir
-            ctx.globalAlpha = 1.0;
-            ctx.drawImage(aiImg, x, y, width, height);
-            ctx.restore();
+                ctx.save();
+                // Alanı temizle
+                ctx.clearRect(clearX, clearY, clearW, clearH);
+                // Halı zemin geri koy
+                ctx.fillStyle = '#f0e4d0';
+                ctx.fillRect(clearX, clearY, clearW, clearH);
+                // İplik grid
+                ctx.strokeStyle = 'rgba(80,50,20,0.03)';
+                ctx.lineWidth = 0.3;
+                for (let gx = Math.floor(clearX / 4) * 4; gx < clearX + clearW; gx += 4) {
+                    ctx.beginPath(); ctx.moveTo(gx, clearY); ctx.lineTo(gx, clearY + clearH); ctx.stroke();
+                }
+                for (let gy = Math.floor(clearY / 4) * 4; gy < clearY + clearH; gy += 4) {
+                    ctx.beginPath(); ctx.moveTo(clearX, gy); ctx.lineTo(clearX + clearW, gy); ctx.stroke();
+                }
+                // AI motifini yerleştir
+                ctx.globalAlpha = 1.0;
+                ctx.drawImage(aiImg, x, y, width, height);
+                ctx.restore();
 
-            // İsim yaz
-            renderWovenName(ctx, userName, x, y, width, height);
-            needsUpdateRef.current = true;
-            console.log(`✨ AI kilim motifi yerleştirildi! (${width}x${height})`);
+                // İsim yaz
+                try {
+                    renderWovenName(ctx, userName, x, y, width, height);
+                } catch (nameErr) {
+                    console.warn('⚠️ AI motif isim hatası:', nameErr.message);
+                }
+                needsUpdateRef.current = true;
+                console.log(`✨ AI kilim motifi yerleştirildi! (${width}x${height})`);
+            } catch (err) {
+                console.error('❌ morphToAIMotif genel hata:', err);
+            }
         };
         aiImg.onerror = (e) => {
             console.error('❌ AI motif yüklenemedi', e);
@@ -949,13 +978,21 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
                             const aiImg = new Image();
                             aiImg.crossOrigin = 'anonymous';
                             aiImg.onload = () => {
-                                ctx.save();
-                                ctx.globalAlpha = 1.0;
-                                ctx.drawImage(aiImg, drawing.x, drawing.y, drawing.width, drawing.height);
-                                ctx.restore();
-                                renderWovenName(ctx, drawing.userName, drawing.x, drawing.y, drawing.width, drawing.height);
-                                needsUpdateRef.current = true;
-                                console.log(`📦 AI motif direkt çizildi: ${drawing.id?.substring(0, 15)}`);
+                                try {
+                                    ctx.save();
+                                    ctx.globalAlpha = 1.0;
+                                    ctx.drawImage(aiImg, drawing.x, drawing.y, drawing.width, drawing.height);
+                                    ctx.restore();
+                                    try {
+                                        renderWovenName(ctx, drawing.userName, drawing.x, drawing.y, drawing.width, drawing.height);
+                                    } catch (nameErr) {
+                                        console.warn('⚠️ İsim hatası:', nameErr.message);
+                                    }
+                                    needsUpdateRef.current = true;
+                                    console.log(`📦 AI motif direkt çizildi: ${drawing.id?.substring(0, 15)}`);
+                                } catch (err) {
+                                    console.error('❌ initial-carpet AI çizim hatası:', err);
+                                }
                             };
                             aiImg.src = drawing.aiDataUrl;
                         }, i * 100); // Hızlı sıralı yükleme
