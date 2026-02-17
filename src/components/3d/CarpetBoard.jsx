@@ -118,11 +118,12 @@ function createCarpetMaterial(drawingTexture, normalMap, bumpMap) {
     mat.onBeforeCompile = (shader) => {
         shader.uniforms.uTime = { value: 0 };
 
-        // Vertex shader: hafif yüzey bozulması (fiber displacement)
+        // Vertex shader: yüzey bozulması (fiber + knot displacement)
         shader.vertexShader = `
             uniform float uTime;
             varying float vFiber;
             varying vec2 vHighUv;
+            varying vec2 vRawUv;
         ` + shader.vertexShader;
 
         shader.vertexShader = shader.vertexShader.replace(
@@ -130,24 +131,27 @@ function createCarpetMaterial(drawingTexture, normalMap, bumpMap) {
             `
             #include <begin_vertex>
             
-            // Yüksek frekanslı UV (fiber detail)
-            vHighUv = uv * vec2(24.0, 40.0);
+            vRawUv = uv;
+            // Yüksek frekanslı UV (knot-level detail)
+            vHighUv = uv * vec2(32.0, 52.0);
             
-            // İplik fiber noise
-            float fiber = sin(uv.x * 200.0) * cos(uv.y * 200.0) * 0.5
-                        + sin(uv.x * 80.0 + uv.y * 60.0) * 0.3;
+            // İplik fiber noise — daha belirgin düğüm dokusu
+            float fiber = sin(uv.x * 200.0) * cos(uv.y * 200.0) * 0.6
+                        + sin(uv.x * 80.0 + uv.y * 60.0) * 0.4
+                        + sin(uv.x * 40.0 - uv.y * 30.0) * 0.2;
             vFiber = fiber;
             
-            // Hafif yüzey kabartması
+            // Halı yüzey kabartması — düğümler 3D hissi verir
             vec3 dispNormal = normalize(normal);
-            transformed += dispNormal * fiber * 0.02;
+            transformed += dispNormal * fiber * 0.025;
             `
         );
 
-        // Fragment shader: fiber detail ve renk varyasyonu
+        // Fragment shader: gerçekçi halı dokuma efektleri
         shader.fragmentShader = `
             varying float vFiber;
             varying vec2 vHighUv;
+            varying vec2 vRawUv;
         ` + shader.fragmentShader;
 
         shader.fragmentShader = shader.fragmentShader.replace(
@@ -155,24 +159,57 @@ function createCarpetMaterial(drawingTexture, normalMap, bumpMap) {
             `
             #include <dithering_fragment>
             
-            // 🧶 Yün fiber detayı
-            float fiberDetail = sin(vHighUv.x * 25.0) * cos(vHighUv.y * 25.0) * 0.05;
-            float fiberCross = sin(vHighUv.x * 12.5 + vHighUv.y * 12.5) * 0.025;
+            // ═══ WARP-WEFT GRID ═══
+            // Yatay atkı iplikleri (weft)
+            float weftLine = smoothstep(0.42, 0.5, fract(vHighUv.y * 1.0));
+            float weftDark = weftLine * 0.06;
             
-            // Renk varyasyonu (her iplik hafif farklı ton)
-            float colorVar = sin(vHighUv.x * 50.0) * sin(vHighUv.y * 50.0) * 0.03;
+            // Dikey çözgü iplikleri (warp)
+            float warpLine = smoothstep(0.44, 0.5, fract(vHighUv.x * 0.8));
+            float warpDark = warpLine * 0.04;
             
-            gl_FragColor.rgb += fiberDetail + fiberCross;
-            gl_FragColor.rgb *= (1.0 + colorVar);
+            // Kesişim gölgesi
+            float intersection = weftLine * warpLine * 0.05;
+            gl_FragColor.rgb -= (weftDark + warpDark + intersection);
             
-            // 🎨 RENK CANLANDIRMA - Satürasyon artışı
+            // ═══ İPLİK FİBER DETAYI ═══
+            float fiberDetail = sin(vHighUv.x * 30.0) * cos(vHighUv.y * 30.0) * 0.06;
+            float fiberCross = sin(vHighUv.x * 15.0 + vHighUv.y * 15.0) * 0.03;
+            // İplik büklüm yönü alternansı
+            float twistDir = step(0.5, fract(vHighUv.y * 0.5));
+            float fiberTwist = mix(
+                sin(vHighUv.x * 40.0 + vHighUv.y * 20.0),
+                sin(vHighUv.x * 40.0 - vHighUv.y * 20.0),
+                twistDir
+            ) * 0.025;
+            
+            gl_FragColor.rgb += fiberDetail + fiberCross + fiberTwist;
+            
+            // ═══ PER-KNOT RENK VARYASYONU ═══
+            // Her düğüm hafifçe farklı ton (el yapımı hissi)
+            float knotVar = sin(vHighUv.x * 8.0) * sin(vHighUv.y * 8.0) * 0.04;
+            gl_FragColor.rgb *= (1.0 + knotVar);
+            
+            // ═══ ABRASH SİMÜLASYONU (GPU) ═══
+            // Yatay bantlarda hafif renk kayması
+            float abrash = sin(vRawUv.y * 60.0 + 3.14) * 0.03;
+            gl_FragColor.rgb += abrash;
+            
+            // ═══ RENK CANLANDIRMA ═══
             float luminance = dot(gl_FragColor.rgb, vec3(0.299, 0.587, 0.114));
-            vec3 saturated = mix(vec3(luminance), gl_FragColor.rgb, 1.8);
-            gl_FragColor.rgb = saturated * 1.4;
+            vec3 saturated = mix(vec3(luminance), gl_FragColor.rgb, 1.6);
+            gl_FragColor.rgb = saturated * 1.3;
             
-            // Rim ışık (kenar parlaması - yün tüylerini simüle eder)
+            // ═══ PİLE DİRECTİON EFEKTİ ═══
+            // Halı tüyü yönüne göre renk kayması (bakış açısı etkisi)
+            float pileAngle = dot(normalize(vViewPosition), vec3(0.0, 0.0, 1.0));
+            float pileShift = mix(0.92, 1.08, clamp(pileAngle, 0.0, 1.0));
+            gl_FragColor.rgb *= pileShift;
+            
+            // ═══ RIM IŞIK ═══
+            // Kenar parlaması — yün tüylerini simüle eder
             float rim = 1.0 - max(dot(normalize(vViewPosition), normalize(vNormal)), 0.0);
-            gl_FragColor.rgb += vec3(0.06) * pow(rim, 3.0);
+            gl_FragColor.rgb += vec3(0.04, 0.035, 0.03) * pow(rim, 2.5);
             `
         );
 
@@ -258,30 +295,25 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
     // =====================================================================
     // 🧶 İPLİK DOKUMA EFEKTİ
     // =====================================================================
-    const THREAD_SIZE = 2; // İplik aralığı (küçük = daha detaylı)
-    const PIXEL_SIZE = 4;  // Mozaik blok boyutu (halıya dokunmuş efekti)
-
-    // =====================================================================
-    // 🎨 CLIENT-SIDE DETERMİNİSTİK ENHANCEMENT
-    // Orijinal çizimi koruyarak "halıya dokunmuş" estetiği verir
-    // AI'dan bağımsız, her zaman çalışır, anında sonuç (50-100ms)
+    // 🧶 HALI DOKUMA SİMÜLASYONU v2 — Gerçekçi Kilim Dönüşüm Engine
+    // Orijinal çizimi koruyarak "Anadolu kiliminde dokunmuş" estetiği verir
     // =====================================================================
 
-    // 12 renklik geleneksel kilim paleti
-    const KILIM_PALETTE = [
-        [196, 30, 58],   // kırmızı
-        [26, 58, 107],   // lacivert
-        [200, 169, 81],  // altın
-        [245, 240, 232], // krem
-        [45, 90, 39],    // yeşil
-        [92, 26, 10],    // bordo
-        [232, 162, 62],  // turuncu
-        [61, 43, 31],    // kahverengi
-        [123, 45, 79],   // mor
-        [212, 165, 116], // bej
-        [26, 26, 46],    // gece mavisi
-        [255, 245, 230], // fildişi
-    ];
+    // 24 renklik geleneksel Anadolu kilim paleti (doğal boyalardan)
+    const KILIM_PALETTE = useMemo(() => [
+        // Kırmızılar (kök boya — Rubia tinctorum)
+        [139, 0, 0], [165, 42, 42], [178, 34, 34], [196, 30, 58], [220, 20, 60],
+        // Maviler (çivit — Indigo)
+        [25, 25, 112], [0, 0, 128], [26, 58, 107], [65, 105, 225],
+        // Sarılar/Altınlar (cehri, zerdeçal)
+        [218, 165, 32], [184, 134, 11], [205, 133, 63], [200, 169, 81],
+        // Yeşiller (çivit + cehri karışımı)
+        [0, 100, 0], [34, 139, 34], [85, 107, 47],
+        // Toprak (ceviz kabuğu)
+        [61, 43, 31], [92, 26, 10], [139, 69, 19], [160, 82, 45],
+        // Krem/Beyaz (doğal yün — kasarlanmamış)
+        [245, 245, 220], [250, 235, 215], [250, 240, 230], [255, 248, 220],
+    ], []);
 
     // RGB → HSL dönüşümü
     const rgbToHsl = useCallback((r, g, b) => {
@@ -320,28 +352,38 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
         ];
     }, []);
 
-    // En yakın kilim rengini bul
+    // En yakın kilim rengini bul (weighted Euclidean — insan algısına yakın)
     const nearestKilimColor = useCallback((r, g, b) => {
         let minDist = Infinity, best = [r, g, b];
         for (const [kr, kg, kb] of KILIM_PALETTE) {
-            const dist = (r - kr) ** 2 + (g - kg) ** 2 + (b - kb) ** 2;
+            // İnsan gözü yeşile daha hassas
+            const dist = (r - kr) ** 2 * 0.3 + (g - kg) ** 2 * 0.59 + (b - kb) ** 2 * 0.11;
             if (dist < minDist) { minDist = dist; best = [kr, kg, kb]; }
         }
         return best;
+    }, [KILIM_PALETTE]);
+
+    // Basit pseudo-random (deterministic per-position)
+    const hashNoise = useCallback((x, y, seed) => {
+        const n = Math.sin(x * 12.9898 + y * 78.233 + seed * 43.7585) * 43758.5453;
+        return n - Math.floor(n); // 0..1
     }, []);
 
     /**
-     * 🎨 applyWovenEnhancement — Çizimi PROFESYONEL halı motifine dönüştürür
+     * 🧶 applyWovenEnhancement v2 — Gerçekçi Halı Dokuma Simülasyonu
      * 
-     * Gerçek bir kilime dokunmuş hissi:
-     * 1. Şeffaf alanlar krem zemin ile doldurulur (gerçek halıda boşluk olmaz)
-     * 2. Kenar algılama ile motif kontürleri belirginleştirilir
-     * 3. Güçlü renk doygunluğu & kontrast → canlı kilim renkleri
-     * 4. Cross-stitch (çapraz iplik) efekti → her blok gerçek ilmek gibi
-     * 5. Çift katmanlı dekoratif kilim çerçevesi
+     * Gerçek bir Anadolu kiliminde dokunmuş hissi:
+     * 1. Büyük ilmek (knot) bazlı render — her düğüm 12-16px
+     * 2. Warp (çözgü/dikey) & Weft (atkı/yatay) iplik simülasyonu
+     * 3. Abrash efekti — el boyaması iplik renk kaymaları
+     * 4. İplik büklüm dokusu — her düğüm içinde sinüzoidal ton
+     * 5. 24 renkli doğal boya kilim paleti
+     * 6. Kenar algılama + kontur belirginleştirme
+     * 7. Çift katmanlı dekoratif kilim çerçevesi
      */
     const applyWovenEnhancement = useCallback((ctx, x, y, width, height) => {
-        const STITCH = 6; // İlmek boyutu — gerçek halı hissine yakın
+        // 🧶 Düğüm boyutu — çizim büyüklüğüne göre adaptif
+        const KNOT = Math.max(8, Math.min(16, Math.round(Math.min(width, height) / 40)));
 
         // 1️⃣ Source data al
         const sourceData = ctx.getImageData(x, y, width, height);
@@ -349,7 +391,7 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
         const enhanced = new ImageData(width, height);
         const out = enhanced.data;
 
-        // 2️⃣ Önce kenar algılama için gradient map oluştur
+        // 2️⃣ Kenar algılama (Sobel filtre — kontür hatları)
         const edgeMap = new Float32Array(width * height);
         for (let py = 1; py < height - 1; py++) {
             for (let px = 1; px < width - 1; px++) {
@@ -358,7 +400,6 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
                 const idxR = (py * width + px + 1) * 4;
                 const idxU = ((py - 1) * width + px) * 4;
                 const idxD = ((py + 1) * width + px) * 4;
-
                 const gx = Math.abs(
                     (src[idxR] + src[idxR + 1] + src[idxR + 2]) -
                     (src[idxL] + src[idxL + 1] + src[idxL + 2])
@@ -367,19 +408,32 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
                     (src[idxD] + src[idxD + 1] + src[idxD + 2]) -
                     (src[idxU] + src[idxU + 1] + src[idxU + 2])
                 );
-                edgeMap[py * width + px] = Math.min(1, Math.sqrt(gx * gx + gy * gy) / 200);
+                edgeMap[py * width + px] = Math.min(1, Math.sqrt(gx * gx + gy * gy) / 180);
             }
         }
 
-        // 3️⃣ Blok bazlı işleme: mozaik + renk enhancement + cross-stitch
-        for (let by = 0; by < height; by += STITCH) {
-            for (let bx = 0; bx < width; bx += STITCH) {
+        // 3️⃣ Abrash seed — her ~4 satır düğümde renk tonu hafifçe kayar
+        const ABRASH_ROWS = 4;
+        const ABRASH_INTENSITY = 0.10; // %10 ton varyasyonu
+
+        // 4️⃣ Düğüm bazlı işleme
+        const knotCols = Math.ceil(width / KNOT);
+        const knotRows = Math.ceil(height / KNOT);
+
+        for (let ky = 0; ky < knotRows; ky++) {
+            // Abrash: her ABRASH_ROWS satırda renk tonu kayması
+            const abrashBand = Math.floor(ky / ABRASH_ROWS);
+            const abrashShift = (hashNoise(0, abrashBand, 42) - 0.5) * ABRASH_INTENSITY;
+
+            for (let kx = 0; kx < knotCols; kx++) {
+                const bx = kx * KNOT;
+                const by = ky * KNOT;
+                const bw = Math.min(KNOT, width - bx);
+                const bh = Math.min(KNOT, height - by);
+
+                // Blok ortalama rengi + alpha + kenar gücü
                 let totalR = 0, totalG = 0, totalB = 0, totalA = 0;
                 let count = 0, edgeStrength = 0;
-                const bw = Math.min(STITCH, width - bx);
-                const bh = Math.min(STITCH, height - by);
-
-                // Blok ortalaması + kenar gücü
                 for (let dy = 0; dy < bh; dy++) {
                     for (let dx = 0; dx < bw; dx++) {
                         const pi = ((by + dy) * width + (bx + dx)) * 4;
@@ -398,52 +452,87 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
                 const avgA = totalA / count;
                 const avgEdge = edgeStrength / count;
 
-                // 🧶 Şeffaf alanları krem zemin ile doldur (gerçek halıda boşluk yok)
-                const isBackground = avgA < 40;
+                // 🧶 Şeffaf alanları krem zemin ile doldur
+                const isBackground = avgA < 50;
                 if (isBackground) {
-                    // Krem/fildişi zemin rengi — hafif ton varyasyonu
-                    const variation = ((bx * 7 + by * 13) % 20) - 10;
-                    avgR = 235 + variation;
-                    avgG = 225 + variation;
-                    avgB = 205 + variation;
+                    // Doğal yün krem — hafif spatial varyasyon
+                    const noise = hashNoise(kx, ky, 7);
+                    avgR = 238 + (noise - 0.5) * 16;
+                    avgG = 228 + (noise - 0.5) * 14;
+                    avgB = 208 + (noise - 0.5) * 12;
                 } else {
-                    // 🎨 Renk doygunluğu artır (+%60) — kilim renkleri canlıdır
+                    // 🎨 Renk işleme pipeline
                     let [h, s, l] = rgbToHsl(avgR, avgG, avgB);
-                    s = Math.min(1.0, s * 1.6);
-                    // Kontrast artır (+%35)
-                    l = 0.5 + (l - 0.5) * 1.35;
-                    l = Math.max(0.08, Math.min(0.92, l));
+
+                    // Doygunluk artır (+%80) — doğal boyalar canlıdır
+                    s = Math.min(1.0, s * 1.8);
+                    // Kontrast artır (+%40)
+                    l = 0.5 + (l - 0.5) * 1.4;
+                    l = Math.max(0.06, Math.min(0.94, l));
+
+                    // Abrash: aynı renkte hafif ton kayması
+                    l += abrashShift;
+                    l = Math.max(0.04, Math.min(0.96, l));
+
                     [avgR, avgG, avgB] = hslToRgb(h, s, l);
 
-                    // 🎯 Kilim paleti quantization — %50 orijinal + %50 palette
+                    // 🎯 Kilim paleti quantization — %35 orijinal + %65 palette
                     const [kr, kg, kb] = nearestKilimColor(avgR, avgG, avgB);
-                    avgR = Math.round(avgR * 0.5 + kr * 0.5);
-                    avgG = Math.round(avgG * 0.5 + kg * 0.5);
-                    avgB = Math.round(avgB * 0.5 + kb * 0.5);
+                    avgR = Math.round(avgR * 0.35 + kr * 0.65);
+                    avgG = Math.round(avgG * 0.35 + kg * 0.65);
+                    avgB = Math.round(avgB * 0.35 + kb * 0.65);
                 }
 
-                // 🧵 Her piksele cross-stitch dokusu uygula
+                // Per-knot hafif renk varyasyonu (el yapımı hissi)
+                const knotNoise = (hashNoise(kx, ky, 13) - 0.5) * 0.06;
+
+                // İplik yönü: tek satır YATAY vurgu, çift satır DİKEY vurgu
+                const isHorizontalRow = ky % 2 === 0;
+
+                // 🧵 Her piksele iplik dokusu uygula
                 for (let dy = 0; dy < bh; dy++) {
                     for (let dx = 0; dx < bw; dx++) {
                         const oi = ((by + dy) * width + (bx + dx)) * 4;
 
                         let r = avgR, g = avgG, b = avgB;
 
-                        // Cross-stitch texture: çapraz iplik izleri
-                        // Her bloğun içinde "\" ve "/" yönünde hafif renk değişimi
-                        const diagA = (dx + dy) / (bw + bh - 2); // 0..1 köşegen
-                        const diagB = (dx + (bh - 1 - dy)) / (bw + bh - 2);
-                        const stitchTexture = Math.sin(diagA * Math.PI) * 0.08 +
-                            Math.sin(diagB * Math.PI) * 0.04;
+                        // ── İPLİK BÜKLÜM DOKUSU ──
+                        // Her düğüm içinde iplik büklümünü simüle eden sinüzoidal ton
+                        const normDx = dx / bw; // 0..1 düğüm içi pozisyon
+                        const normDy = dy / bh;
 
-                        // Blok kenarlarında koyu çizgi (ilmek arası oluk)
-                        const onEdge = (dx === 0 || dy === 0 || dx === bw - 1 || dy === bh - 1);
-                        const edgeDarken = onEdge ? 0.82 : 1.0;
+                        // Weft (yatay iplik): yatay çizgiler
+                        const weftIntensity = isHorizontalRow ? 0.12 : 0.05;
+                        const weft = Math.sin(normDy * Math.PI * 3) * weftIntensity;
 
-                        // Kenar algılamada bulunan kontur hatlarını koyulaştır
-                        const contourDarken = 1.0 - avgEdge * 0.4;
+                        // Warp (dikey iplik): dikey çizgiler
+                        const warpIntensity = isHorizontalRow ? 0.05 : 0.12;
+                        const warp = Math.sin(normDx * Math.PI * 3) * warpIntensity;
 
-                        const factor = edgeDarken * contourDarken * (1 + stitchTexture);
+                        // İplik büklümü: çapraz twist
+                        const twist = Math.sin((normDx + normDy) * Math.PI * 2) * 0.04;
+
+                        // ── DÜĞÜM KENARI GÖLGESİ ──
+                        // Her düğümün kenarı koyu (ilmekler arası oluk)
+                        const edgeX = Math.min(dx, bw - 1 - dx);
+                        const edgeY = Math.min(dy, bh - 1 - dy);
+                        const edgeDist = Math.min(edgeX, edgeY);
+                        // Kenar gölgesi: gaussian-yakın darken (0=kenar, 1=merkez)
+                        const edgeFade = edgeDist <= 1 ? 0.72 : (edgeDist <= 2 ? 0.88 : 1.0);
+
+                        // ── KONTUR KOYULAŞTIRMA ──
+                        const contourDarken = 1.0 - avgEdge * 0.5;
+
+                        // ── WARP/WEFT KESİŞİM GÖLGESİ ──
+                        // Çözgü-atkı kesişim noktalarında hafif karanlık
+                        const crossX = Math.abs(normDx - 0.5) < 0.1;
+                        const crossY = Math.abs(normDy - 0.5) < 0.1;
+                        const crossShadow = (crossX && crossY) ? 0.92 : 1.0;
+
+                        // Tüm efektleri birleştir
+                        const factor = edgeFade * contourDarken * crossShadow *
+                            (1 + weft + warp + twist + knotNoise);
+
                         r = Math.max(0, Math.min(255, Math.round(r * factor)));
                         g = Math.max(0, Math.min(255, Math.round(g * factor)));
                         b = Math.max(0, Math.min(255, Math.round(b * factor)));
@@ -457,20 +546,26 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
             }
         }
 
-        // 4️⃣ Enhanced sonucu canvas'a yaz
+        // 5️⃣ Enhanced sonucu canvas'a yaz
         ctx.putImageData(enhanced, x, y);
 
-        // 5️⃣ Warp/weft iplik grid — her STITCH aralığında çok ince çizgiler
+        // 6️⃣ Warp/Weft grid overlay — düğümler arası çözgü-atkı iplikleri
         ctx.save();
-        ctx.strokeStyle = 'rgba(80, 50, 30, 0.08)';
-        ctx.lineWidth = 0.5;
-        for (let ty = STITCH; ty < height; ty += STITCH) {
+        // Yatay atkı iplikleri (weft) — her düğüm satırı arasında
+        for (let ty = KNOT; ty < height; ty += KNOT) {
+            const lineAlpha = (Math.floor(ty / KNOT) % 2 === 0) ? 0.14 : 0.08;
+            ctx.strokeStyle = `rgba(60, 35, 15, ${lineAlpha})`;
+            ctx.lineWidth = 1.2;
             ctx.beginPath();
             ctx.moveTo(x, y + ty);
             ctx.lineTo(x + width, y + ty);
             ctx.stroke();
         }
-        for (let tx = STITCH; tx < width; tx += STITCH) {
+        // Dikey çözgü iplikleri (warp) — her düğüm sütunu arasında
+        for (let tx = KNOT; tx < width; tx += KNOT) {
+            const lineAlpha = (Math.floor(tx / KNOT) % 2 === 0) ? 0.10 : 0.06;
+            ctx.strokeStyle = `rgba(50, 30, 10, ${lineAlpha})`;
+            ctx.lineWidth = 0.8;
             ctx.beginPath();
             ctx.moveTo(x + tx, y);
             ctx.lineTo(x + tx, y + height);
@@ -478,14 +573,28 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
         }
         ctx.restore();
 
-        // 6️⃣ Profesyonel çift katmanlı kilim çerçevesi
-        const borderW = Math.max(6, Math.min(14, Math.min(width, height) * 0.04));
+        // 7️⃣ Profesyonel çift katmanlı kilim çerçevesi
+        const borderW = Math.max(8, Math.min(18, Math.min(width, height) * 0.04));
         ctx.save();
 
         // Dış çerçeve — koyu bordo
         ctx.strokeStyle = '#5c1a0a';
         ctx.lineWidth = borderW;
         ctx.strokeRect(x + borderW / 2, y + borderW / 2, width - borderW, height - borderW);
+
+        // Dış çerçeve iplik dokusu — yatay çizgiler (halı kenarı hissi)
+        ctx.strokeStyle = 'rgba(40, 20, 5, 0.2)';
+        ctx.lineWidth = 0.5;
+        for (let fy = 0; fy < borderW; fy += 3) {
+            ctx.beginPath();
+            ctx.moveTo(x, y + fy);
+            ctx.lineTo(x + width, y + fy);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(x, y + height - fy);
+            ctx.lineTo(x + width, y + height - fy);
+            ctx.stroke();
+        }
 
         // Orta çerçeve — altın şerit
         const midW = borderW * 0.5;
@@ -496,12 +605,12 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
 
         // İç çerçeve — ince lacivert
         ctx.strokeStyle = '#1a3a6b';
-        ctx.lineWidth = Math.max(1.5, borderW * 0.25);
+        ctx.lineWidth = Math.max(2, borderW * 0.3);
         const innerInset = borderW + midW + 2;
         ctx.strokeRect(x + innerInset, y + innerInset, width - innerInset * 2, height - innerInset * 2);
 
         // 🔶 Köşe motifleri — çift baklava dilimi
-        const cs = borderW * 1.8;
+        const cs = borderW * 2.0;
         const corners = [
             [x + borderW + cs / 2, y + borderW + cs / 2],
             [x + width - borderW - cs / 2, y + borderW + cs / 2],
@@ -528,19 +637,26 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
             ctx.lineTo(cx - ics / 2, cy);
             ctx.closePath();
             ctx.fill();
+            // En iç — lacivert nokta
+            ctx.fillStyle = '#1a3a6b';
+            const tcs = cs * 0.2;
+            ctx.beginPath();
+            ctx.moveTo(cx, cy - tcs / 2);
+            ctx.lineTo(cx + tcs / 2, cy);
+            ctx.lineTo(cx, cy + tcs / 2);
+            ctx.lineTo(cx - tcs / 2, cy);
+            ctx.closePath();
+            ctx.fill();
         }
 
-        // 👁️ Kenar göz motifleri — üst ve alt
-        const eyeSize = borderW * 0.6;
-        const eyeSpacing = eyeSize * 5;
+        // 👁️ Kenar göz motifleri
+        const eyeSize = borderW * 0.7;
+        const eyeSpacing = eyeSize * 4.5;
         ctx.fillStyle = '#c8a951';
         for (let ex = x + innerInset + cs + eyeSpacing; ex < x + width - innerInset - cs; ex += eyeSpacing) {
-            // Üst kenar
             drawEye(ctx, ex, y + borderW * 0.5, eyeSize);
-            // Alt kenar
             drawEye(ctx, ex, y + height - borderW * 0.5, eyeSize);
         }
-        // Sol ve sağ kenar
         for (let ey = y + innerInset + cs + eyeSpacing; ey < y + height - innerInset - cs; ey += eyeSpacing) {
             drawEye(ctx, x + borderW * 0.5, ey, eyeSize);
             drawEye(ctx, x + width - borderW * 0.5, ey, eyeSize);
@@ -548,7 +664,7 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
 
         ctx.restore();
         needsUpdateRef.current = true;
-    }, [rgbToHsl, hslToRgb, nearestKilimColor]);
+    }, [rgbToHsl, hslToRgb, nearestKilimColor, hashNoise, KILIM_PALETTE]);
 
 
     // 👁 Göz motifi helper — kilim çerçeve kenarlarındaki "nazarlık" motifi
