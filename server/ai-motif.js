@@ -1,25 +1,29 @@
 /**
- * 🤖 AI Motif Dönüşümü — Gemini 3 Pro Image
+ * 🤖 AI Motif Dönüşümü — Dual Model Fallback
  * 
- * Kullanıcının serbest çizimini geleneksel Anadolu kilim motifine dönüştürür.
+ * Strateji:
+ *  1. gemini-3-pro-image → native image gen (en iyi sonuç)
+ *  2. gemini-2.5-flash → SVG motif kodu → base64 PNG'ye çevir (fallback)
+ * 
  * OpenAI-compatible multimodal API endpoint kullanır.
  */
 
 const API_URL = process.env.AI_API_URL || 'https://antigravity2.mindops.net/v1/chat/completions';
 const API_KEY = process.env.AI_API_KEY || 'sk-antigravity-lejyon-2026';
-const MODEL = process.env.AI_MODEL || 'gemini-3-pro-image';
+const PRIMARY_MODEL = 'gemini-3-pro-image';
+const FALLBACK_MODEL = 'gemini-2.5-flash';
 
-const MAX_RETRIES = 3;
-const RETRY_DELAY_MS = 15000; // 15 saniye
-const REQUEST_TIMEOUT_MS = 180000; // 180 saniye (image gen yavaş olabilir)
+const MAX_RETRIES = 2;
+const RETRY_DELAY_MS = 15000;
+const REQUEST_TIMEOUT_MS = 180000;
 
 // AI motif dönüşüm durumu
 let activeRequests = 0;
 const MAX_CONCURRENT = 2;
 const pendingQueue = [];
 
-// 🎨 Dönüşüm prompt'u
-const MOTIF_PROMPT = `You are a master traditional Anatolian carpet/kilim motif designer.
+// 🎨 Image gen prompt'u (gemini-3-pro-image)
+const IMAGE_PROMPT = `You are a master traditional Anatolian carpet/kilim motif designer.
 
 I will give you a freehand drawing made by a visitor. Transform it into a beautiful traditional Anatolian kilim motif.
 
@@ -35,13 +39,21 @@ Rules:
 
 Generate ONLY the image, no text.`;
 
+// 🎨 SVG fallback prompt'u (gemini-2.5-flash) — kısa SVG için optimize edildi
+const SVG_PROMPT = `Generate a simple 256x256 SVG of a traditional Anatolian kilim motif.
+
+IMPORTANT: Keep it SIMPLE - use basic shapes only (rect, polygon, circle, line). Maximum 30 elements.
+
+Colors: #c41e3a (red), #1a3a6b (blue), #c8a951 (gold), #f5f0e8 (cream bg), #2d5a27 (green).
+
+Include: central diamond, corner triangles, geometric border pattern.
+
+Output ONLY raw SVG code. Start with <svg, end with </svg>. No markdown, no text.`;
+
 /**
  * Serbest çizimi AI ile kilim motifine dönüştürür
- * @param {string} base64DataUrl - "data:image/png;base64,..." formatında çizim
- * @returns {Promise<string|null>} AI motif base64 dataUrl veya null (hata durumunda)
  */
 export async function transformToMotif(base64DataUrl) {
-    // Kuyruk kontrolü — max eşzamanlı istek sınırı
     if (activeRequests >= MAX_CONCURRENT) {
         return new Promise((resolve) => {
             pendingQueue.push({ base64DataUrl, resolve });
@@ -53,120 +65,149 @@ export async function transformToMotif(base64DataUrl) {
     console.log(`🤖 AI motif dönüşümü başlıyor... (aktif: ${activeRequests})`);
 
     try {
-        const result = await callGeminiWithRetry(base64DataUrl);
-        return result;
+        // Strateji 1: gemini-3-pro-image ile native image gen
+        const imageResult = await tryImageGeneration(base64DataUrl);
+        if (imageResult) return imageResult;
+
+        // Strateji 2: gemini-2.5-flash ile SVG fallback
+        console.log('🔄 Fallback: SVG motif oluşturma...');
+        const svgResult = await trySVGGeneration();
+        if (svgResult) return svgResult;
+
+        return null;
     } finally {
         activeRequests--;
-        // Kuyruktan sonrakini işle
         if (pendingQueue.length > 0) {
             const next = pendingQueue.shift();
-            console.log(`🤖 Kuyruktan sonraki işleniyor. Kalan: ${pendingQueue.length}`);
             transformToMotif(next.base64DataUrl).then(next.resolve);
         }
     }
 }
 
 /**
- * Retry logic ile Gemini API çağrısı
+ * Strateji 1: Native image generation (gemini-3-pro-image)
  */
-async function callGeminiWithRetry(base64DataUrl, attempt = 1) {
-    try {
-        const result = await callGeminiAPI(base64DataUrl);
-        return result;
-    } catch (err) {
-        if (attempt <= MAX_RETRIES && (err.status === 503 || err.status === 429)) {
-            // Sunucudan gelen retryDelay varsa kullan, yoksa default
-            const serverDelay = err.retryDelay ? err.retryDelay * 1000 : 0;
-            const delay = Math.max(RETRY_DELAY_MS * attempt, serverDelay);
-            console.log(`⏳ AI retry ${attempt}/${MAX_RETRIES} — ${Math.round(delay / 1000)}s bekleniyor... (${err.message})`);
-            await sleep(delay);
-            return callGeminiWithRetry(base64DataUrl, attempt + 1);
+async function tryImageGeneration(base64DataUrl) {
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+            const result = await callAPI(PRIMARY_MODEL, [
+                { type: 'text', text: IMAGE_PROMPT },
+                { type: 'image_url', image_url: { url: base64DataUrl } }
+            ]);
+
+            // Response'dan base64 image çıkar
+            const match = result.match(/data:image\/(jpeg|png);base64,([A-Za-z0-9+/=\n]+)/);
+            if (match) {
+                const mimeType = match[1];
+                const base64 = match[2].replace(/\n/g, '');
+                console.log(`✅ Image gen başarılı! (${mimeType}, ${Math.round(base64.length / 1024)} KB)`);
+                return `data:image/${mimeType};base64,${base64}`;
+            }
+            console.warn('⚠️ Image gen yanıtında resim yok');
+            return null;
+        } catch (err) {
+            if ((err.status === 503 || err.status === 429) && attempt < MAX_RETRIES) {
+                const delay = RETRY_DELAY_MS * attempt;
+                console.log(`⏳ Image gen retry ${attempt}/${MAX_RETRIES} — ${delay / 1000}s... (${err.message})`);
+                await sleep(delay);
+                continue;
+            }
+            console.log(`⚠️ Image gen başarısız: ${err.message}`);
+            return null; // Fallback'e geç
         }
-        console.error(`❌ AI motif hatası (attempt ${attempt}):`, err.message);
-        return null;
     }
+    return null;
 }
 
 /**
- * Gemini API çağrısı — Multimodal (text + image)
+ * Strateji 2: SVG tabanlı motif (gemini-2.5-flash) → base64 PNG
  */
-async function callGeminiAPI(base64DataUrl) {
+async function trySVGGeneration() {
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+            const result = await callAPI(FALLBACK_MODEL, [
+                { type: 'text', text: SVG_PROMPT }
+            ]);
+
+            // SVG kodu çıkar
+            let svg = result;
+            console.log(`🔍 SVG yanıtı (ilk 300): ${svg.substring(0, 300)}`);
+            // Markdown fence varsa temizle
+            svg = svg.replace(/```(?:xml|svg|html)?\n?/g, '').replace(/```/g, '').trim();
+
+            // SVG tag kontrolü
+            let svgMatch = svg.match(/<svg[\s\S]*<\/svg>/i);
+            // Eğer </svg> yoksa ama <svg var ise, kapatma tag'ı ekle
+            if (!svgMatch && svg.includes('<svg')) {
+                console.log('⚠️ SVG kapanış tagı eksik, ekleniyor...');
+                svg = svg + '</svg>';
+                svgMatch = svg.match(/<svg[\s\S]*<\/svg>/i);
+            }
+            if (!svgMatch) {
+                console.warn('⚠️ SVG yanıtında <svg> tag bulunamadı. Tam yanıt uzunluğu:', svg.length);
+                if (attempt < MAX_RETRIES) continue;
+                return null;
+            }
+
+            svg = svgMatch[0];
+            console.log(`✅ SVG motif oluşturuldu! (${svg.length} byte)`);
+
+            // SVG → base64 data URL
+            const base64Svg = Buffer.from(svg).toString('base64');
+            return `data:image/svg+xml;base64,${base64Svg}`;
+        } catch (err) {
+            if ((err.status === 503 || err.status === 429) && attempt < MAX_RETRIES) {
+                const delay = 5000 * attempt;
+                console.log(`⏳ SVG retry ${attempt}/${MAX_RETRIES} — ${delay / 1000}s... (${err.message})`);
+                await sleep(delay);
+                continue;
+            }
+            console.error(`❌ SVG gen başarısız: ${err.message}`);
+            return null;
+        }
+    }
+    return null;
+}
+
+/**
+ * Generic API çağrısı
+ */
+async function callAPI(model, content) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
     try {
-        const body = {
-            model: MODEL,
-            messages: [
-                {
-                    role: 'user',
-                    content: [
-                        { type: 'text', text: MOTIF_PROMPT },
-                        {
-                            type: 'image_url',
-                            image_url: { url: base64DataUrl }
-                        }
-                    ]
-                }
-            ],
-            max_tokens: 8192
-        };
-
         const response = await fetch(API_URL, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${API_KEY}`,
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify(body),
+            body: JSON.stringify({
+                model,
+                messages: [{ role: 'user', content }],
+                max_tokens: 16384
+            }),
             signal: controller.signal
         });
 
         if (!response.ok) {
-            const errData = await response.json().catch(() => ({}));
-            const err = new Error(errData?.error?.message || `HTTP ${response.status}`);
+            const errText = await response.text().catch(() => '');
+            const err = new Error(errText.substring(0, 200) || `HTTP ${response.status}`);
             err.status = response.status;
-            // 503'te retryDelay hint'i al
-            if (errData?.error?.details) {
-                const retryInfo = errData.error.details.find(d => d.retryDelay);
-                if (retryInfo) {
-                    err.retryDelay = parseInt(retryInfo.retryDelay) || 30;
-                }
-            }
             throw err;
         }
 
         const data = await response.json();
-
-        if (!data.choices || !data.choices[0]?.message?.content) {
-            throw new Error('Geçersiz API yanıtı — choices bulunamadı');
+        if (!data.choices?.[0]?.message?.content) {
+            throw new Error('Geçersiz API yanıtı');
         }
-
-        const content = data.choices[0].message.content;
-
-        // Response'dan base64 image çıkar
-        // Format: "![image](data:image/jpeg;base64,...)"
-        const match = content.match(/data:image\/(jpeg|png);base64,([A-Za-z0-9+/=\n]+)/);
-        if (!match) {
-            console.warn('⚠️ AI yanıtında resim bulunamadı. İlk 200 karakter:', content.substring(0, 200));
-            throw new Error('AI yanıtında base64 image bulunamadı');
-        }
-
-        const mimeType = match[1];
-        const base64 = match[2].replace(/\n/g, '');
-        const dataUrl = `data:image/${mimeType};base64,${base64}`;
-
-        console.log(`✅ AI motif oluşturuldu! (${mimeType}, ${Math.round(base64.length / 1024)} KB base64)`);
-
-        return dataUrl;
+        return data.choices[0].message.content;
     } finally {
         clearTimeout(timeout);
     }
 }
 
-/**
- * AI durumu
- */
 export function getAIStatus() {
     return {
         activeRequests,
