@@ -64,7 +64,7 @@ const io = new Server(httpServer, {
 // ============================================================================
 
 let MAX_DRAWINGS = 28; // Varsayılan (4x7 ızgara)
-let aiEnabled = false;  // 🤖 AI motif KAPALI — applyWovenEnhancement orijinal şekli koruyarak kilim tarzına dönüştürüyor
+let aiEnabled = true;  // 🤖 AI motif AKTİF — Gemini native image generation ile çizim → kilim dönüşümü
 
 // Her çizim: { id, dataUrl, x, y, width, height, rotation, timestamp }
 let drawings = [];

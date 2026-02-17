@@ -10,6 +10,7 @@
     "server": "node server/index.js"
   },
   "dependencies": {
+    "@google/genai": "^1.41.0",
     "@react-three/drei": "^9.99.0",
     "@react-three/fiber": "^8.15.16",
     "@react-three/postprocessing": "^2.16.3",
