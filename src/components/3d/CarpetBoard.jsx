@@ -968,10 +968,17 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
 
         socket.on('initial-carpet', ({ drawings }) => {
             console.log(`📦 initial-carpet geldi: ${drawings?.length || 0} çizim`);
+            console.log(`📦 ctx durumu: ${!!offscreenCtxRef.current}, textureRef: ${!!textureRef.current}`);
             if (drawings && drawings.length > 0) {
                 const ctx = offscreenCtxRef.current;
+                if (!ctx) {
+                    console.error('❌ CANVAS CTX NULL! Çizimler gösterilemez.');
+                    return;
+                }
 
                 drawings.forEach((drawing, i) => {
+                    console.log(`📦 [${i}] id=${drawing.id?.substring(0, 12)} ai=${!!drawing.aiDataUrl} dataUrl=${drawing.dataUrl ? drawing.dataUrl.substring(0, 30) + '...' : 'NULL'} x=${drawing.x} y=${drawing.y} w=${drawing.width} h=${drawing.height}`);
+
                     if (drawing.aiDataUrl && ctx) {
                         // ✅ AI motifi HAZIR — direkt çiz (animasyon yok, AI'ya tekrar gitmez)
                         setTimeout(() => {
@@ -994,11 +1001,18 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
                                     console.error('❌ initial-carpet AI çizim hatası:', err);
                                 }
                             };
+                            aiImg.onerror = (e) => {
+                                console.error(`❌ AI img yüklenemedi [${i}]:`, e);
+                            };
                             aiImg.src = drawing.aiDataUrl;
                         }, i * 100); // Hızlı sıralı yükleme
                     } else {
                         // ⏳ AI motifi yok — orijinal çizimi direkt göster
-                        setTimeout(() => drawWovenImage(drawing), i * 100);
+                        console.log(`📦 [${i}] drawWovenImage çağrılacak...`);
+                        setTimeout(() => {
+                            console.log(`📦 [${i}] drawWovenImage setTimeout tetiklendi`);
+                            drawWovenImage(drawing);
+                        }, i * 100);
                     }
                 });
             }
