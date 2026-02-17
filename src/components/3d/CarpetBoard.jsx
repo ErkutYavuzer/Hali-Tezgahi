@@ -370,20 +370,20 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
     }, []);
 
     /**
-     * 🧶 applyWovenEnhancement v2 — Gerçekçi Halı Dokuma Simülasyonu
+     * 🧶 applyWovenEnhancement v3 — PİKSEL KORUYUCU Halı Dokuma Simülasyonu
      * 
-     * Gerçek bir Anadolu kiliminde dokunmuş hissi:
-     * 1. Büyük ilmek (knot) bazlı render — her düğüm 12-16px
-     * 2. Warp (çözgü/dikey) & Weft (atkı/yatay) iplik simülasyonu
-     * 3. Abrash efekti — el boyaması iplik renk kaymaları
-     * 4. İplik büklüm dokusu — her düğüm içinde sinüzoidal ton
-     * 5. 24 renkli doğal boya kilim paleti
-     * 6. Kenar algılama + kontur belirginleştirme
-     * 7. Çift katmanlı dekoratif kilim çerçevesi
+     * KRİTİK FARK: Orijinal çizimin her pikselini KORUYOR, üzerine dokuma
+     * dokusu OVERLAY olarak ekleniyor. Blok ortalama YAPMIYOR.
+     * 
+     * 1. Her piksel: orijinal renk korunur + hafif kilim paleti etkisi
+     * 2. Küçük ilmek grid'i üzerine OVERLAY (kenar gölge, iplik çizgileri)
+     * 3. Şeffaf alanlar krem zemin (gerçek halıda boşluk olmaz)
+     * 4. Abrash: yatay bantlarda hafif ton kayması
+     * 5. Çift katmanlı dekoratif kilim çerçevesi
      */
     const applyWovenEnhancement = useCallback((ctx, x, y, width, height) => {
-        // 🧶 Düğüm boyutu — çizim büyüklüğüne göre adaptif
-        const KNOT = Math.max(8, Math.min(16, Math.round(Math.min(width, height) / 40)));
+        // 🧶 İlmek boyutu — küçük tutuyoruz ki orijinal çizim belli olsun
+        const KNOT = Math.max(4, Math.min(8, Math.round(Math.min(width, height) / 80)));
 
         // 1️⃣ Source data al
         const sourceData = ctx.getImageData(x, y, width, height);
@@ -391,158 +391,79 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
         const enhanced = new ImageData(width, height);
         const out = enhanced.data;
 
-        // 2️⃣ Kenar algılama (Sobel filtre — kontür hatları)
-        const edgeMap = new Float32Array(width * height);
-        for (let py = 1; py < height - 1; py++) {
-            for (let px = 1; px < width - 1; px++) {
-                const idx = (py * width + px) * 4;
-                const idxL = (py * width + px - 1) * 4;
-                const idxR = (py * width + px + 1) * 4;
-                const idxU = ((py - 1) * width + px) * 4;
-                const idxD = ((py + 1) * width + px) * 4;
-                const gx = Math.abs(
-                    (src[idxR] + src[idxR + 1] + src[idxR + 2]) -
-                    (src[idxL] + src[idxL + 1] + src[idxL + 2])
-                );
-                const gy = Math.abs(
-                    (src[idxD] + src[idxD + 1] + src[idxD + 2]) -
-                    (src[idxU] + src[idxU + 1] + src[idxU + 2])
-                );
-                edgeMap[py * width + px] = Math.min(1, Math.sqrt(gx * gx + gy * gy) / 180);
-            }
-        }
+        // 2️⃣ PİKSEL BAZLI İŞLEME — orijinal rengi koruyarak dönüştür
+        for (let py = 0; py < height; py++) {
+            // Abrash: her ~6 ilmek satırında renk tonu hafifçe kayar
+            const knotRow = Math.floor(py / KNOT);
+            const abrashBand = Math.floor(knotRow / 6);
+            const abrashShift = (hashNoise(0, abrashBand, 42) - 0.5) * 0.06;
 
-        // 3️⃣ Abrash seed — her ~4 satır düğümde renk tonu hafifçe kayar
-        const ABRASH_ROWS = 4;
-        const ABRASH_INTENSITY = 0.10; // %10 ton varyasyonu
+            for (let px = 0; px < width; px++) {
+                const pi = (py * width + px) * 4;
+                let r = src[pi];
+                let g = src[pi + 1];
+                let b = src[pi + 2];
+                const a = src[pi + 3];
 
-        // 4️⃣ Düğüm bazlı işleme
-        const knotCols = Math.ceil(width / KNOT);
-        const knotRows = Math.ceil(height / KNOT);
+                const knotCol = Math.floor(px / KNOT);
 
-        for (let ky = 0; ky < knotRows; ky++) {
-            // Abrash: her ABRASH_ROWS satırda renk tonu kayması
-            const abrashBand = Math.floor(ky / ABRASH_ROWS);
-            const abrashShift = (hashNoise(0, abrashBand, 42) - 0.5) * ABRASH_INTENSITY;
-
-            for (let kx = 0; kx < knotCols; kx++) {
-                const bx = kx * KNOT;
-                const by = ky * KNOT;
-                const bw = Math.min(KNOT, width - bx);
-                const bh = Math.min(KNOT, height - by);
-
-                // Blok ortalama rengi + alpha + kenar gücü
-                let totalR = 0, totalG = 0, totalB = 0, totalA = 0;
-                let count = 0, edgeStrength = 0;
-                for (let dy = 0; dy < bh; dy++) {
-                    for (let dx = 0; dx < bw; dx++) {
-                        const pi = ((by + dy) * width + (bx + dx)) * 4;
-                        totalR += src[pi];
-                        totalG += src[pi + 1];
-                        totalB += src[pi + 2];
-                        totalA += src[pi + 3];
-                        edgeStrength += edgeMap[(by + dy) * width + (bx + dx)];
-                        count++;
-                    }
-                }
-
-                let avgR = totalR / count;
-                let avgG = totalG / count;
-                let avgB = totalB / count;
-                const avgA = totalA / count;
-                const avgEdge = edgeStrength / count;
-
-                // 🧶 Şeffaf alanları krem zemin ile doldur
-                const isBackground = avgA < 50;
-                if (isBackground) {
-                    // Doğal yün krem — hafif spatial varyasyon
-                    const noise = hashNoise(kx, ky, 7);
-                    avgR = 238 + (noise - 0.5) * 16;
-                    avgG = 228 + (noise - 0.5) * 14;
-                    avgB = 208 + (noise - 0.5) * 12;
+                // ── ŞEFFAF → KREM ZEMİN ──
+                if (a < 30) {
+                    // Doğal yün krem rengi — hafif varyasyon
+                    const noise = hashNoise(knotCol, knotRow, 7);
+                    r = 240 + (noise - 0.5) * 12;
+                    g = 232 + (noise - 0.5) * 10;
+                    b = 215 + (noise - 0.5) * 8;
                 } else {
-                    // 🎨 Renk işleme pipeline
-                    let [h, s, l] = rgbToHsl(avgR, avgG, avgB);
+                    // ── ORİJİNAL RENGİ KORU + HAFİF KİLİM ETKİSİ ──
+                    // Doygunluk hafifçe artır (+%30)
+                    let [h, s, l] = rgbToHsl(r, g, b);
+                    s = Math.min(1.0, s * 1.3);
+                    l = 0.5 + (l - 0.5) * 1.15; // hafif kontrast
+                    l = Math.max(0.05, Math.min(0.95, l));
+                    l += abrashShift; // abrash
+                    l = Math.max(0.03, Math.min(0.97, l));
+                    [r, g, b] = hslToRgb(h, s, l);
 
-                    // Doygunluk artır (+%80) — doğal boyalar canlıdır
-                    s = Math.min(1.0, s * 1.8);
-                    // Kontrast artır (+%40)
-                    l = 0.5 + (l - 0.5) * 1.4;
-                    l = Math.max(0.06, Math.min(0.94, l));
-
-                    // Abrash: aynı renkte hafif ton kayması
-                    l += abrashShift;
-                    l = Math.max(0.04, Math.min(0.96, l));
-
-                    [avgR, avgG, avgB] = hslToRgb(h, s, l);
-
-                    // 🎯 Kilim paleti quantization — %35 orijinal + %65 palette
-                    const [kr, kg, kb] = nearestKilimColor(avgR, avgG, avgB);
-                    avgR = Math.round(avgR * 0.35 + kr * 0.65);
-                    avgG = Math.round(avgG * 0.35 + kg * 0.65);
-                    avgB = Math.round(avgB * 0.35 + kb * 0.65);
+                    // Hafif kilim paleti etkisi (%20 palette, %80 orijinal)
+                    const [kr, kg, kb] = nearestKilimColor(r, g, b);
+                    r = Math.round(r * 0.80 + kr * 0.20);
+                    g = Math.round(g * 0.80 + kg * 0.20);
+                    b = Math.round(b * 0.80 + kb * 0.20);
                 }
 
-                // Per-knot hafif renk varyasyonu (el yapımı hissi)
-                const knotNoise = (hashNoise(kx, ky, 13) - 0.5) * 0.06;
-
-                // İplik yönü: tek satır YATAY vurgu, çift satır DİKEY vurgu
-                const isHorizontalRow = ky % 2 === 0;
-
-                // 🧵 Her piksele iplik dokusu uygula
-                for (let dy = 0; dy < bh; dy++) {
-                    for (let dx = 0; dx < bw; dx++) {
-                        const oi = ((by + dy) * width + (bx + dx)) * 4;
-
-                        let r = avgR, g = avgG, b = avgB;
-
-                        // ── İPLİK BÜKLÜM DOKUSU ──
-                        // Her düğüm içinde iplik büklümünü simüle eden sinüzoidal ton
-                        const normDx = dx / bw; // 0..1 düğüm içi pozisyon
-                        const normDy = dy / bh;
-
-                        // Weft (yatay iplik): yatay çizgiler
-                        const weftIntensity = isHorizontalRow ? 0.12 : 0.05;
-                        const weft = Math.sin(normDy * Math.PI * 3) * weftIntensity;
-
-                        // Warp (dikey iplik): dikey çizgiler
-                        const warpIntensity = isHorizontalRow ? 0.05 : 0.12;
-                        const warp = Math.sin(normDx * Math.PI * 3) * warpIntensity;
-
-                        // İplik büklümü: çapraz twist
-                        const twist = Math.sin((normDx + normDy) * Math.PI * 2) * 0.04;
-
-                        // ── DÜĞÜM KENARI GÖLGESİ ──
-                        // Her düğümün kenarı koyu (ilmekler arası oluk)
-                        const edgeX = Math.min(dx, bw - 1 - dx);
-                        const edgeY = Math.min(dy, bh - 1 - dy);
-                        const edgeDist = Math.min(edgeX, edgeY);
-                        // Kenar gölgesi: gaussian-yakın darken (0=kenar, 1=merkez)
-                        const edgeFade = edgeDist <= 1 ? 0.72 : (edgeDist <= 2 ? 0.88 : 1.0);
-
-                        // ── KONTUR KOYULAŞTIRMA ──
-                        const contourDarken = 1.0 - avgEdge * 0.5;
-
-                        // ── WARP/WEFT KESİŞİM GÖLGESİ ──
-                        // Çözgü-atkı kesişim noktalarında hafif karanlık
-                        const crossX = Math.abs(normDx - 0.5) < 0.1;
-                        const crossY = Math.abs(normDy - 0.5) < 0.1;
-                        const crossShadow = (crossX && crossY) ? 0.92 : 1.0;
-
-                        // Tüm efektleri birleştir
-                        const factor = edgeFade * contourDarken * crossShadow *
-                            (1 + weft + warp + twist + knotNoise);
-
-                        r = Math.max(0, Math.min(255, Math.round(r * factor)));
-                        g = Math.max(0, Math.min(255, Math.round(g * factor)));
-                        b = Math.max(0, Math.min(255, Math.round(b * factor)));
-
-                        out[oi] = r;
-                        out[oi + 1] = g;
-                        out[oi + 2] = b;
-                        out[oi + 3] = 255; // Halıda şeffaflık yok
-                    }
+                // ── İLMEK KENARI ──
+                // Her KNOT sınırında hafif koyu çizgi (iplikler arası oluk)
+                const inKnotX = px % KNOT;
+                const inKnotY = py % KNOT;
+                const isKnotEdge = (inKnotX === 0 || inKnotY === 0);
+                if (isKnotEdge) {
+                    r = Math.round(r * 0.88);
+                    g = Math.round(g * 0.88);
+                    b = Math.round(b * 0.88);
                 }
+
+                // ── İPLİK BÜKLÜM DOKUSU ──
+                // Düğüm içinde hafif ton değişimi (sinüzoidal)
+                const normX = inKnotX / KNOT;
+                const normY = inKnotY / KNOT;
+                const threadTexture = Math.sin(normY * Math.PI * 2) * 0.04
+                    + Math.sin(normX * Math.PI * 2) * 0.02;
+                r = Math.max(0, Math.min(255, Math.round(r * (1 + threadTexture))));
+                g = Math.max(0, Math.min(255, Math.round(g * (1 + threadTexture))));
+                b = Math.max(0, Math.min(255, Math.round(b * (1 + threadTexture))));
+
+                // ── PER-KNOT NOISE ──
+                // Her düğüm hafifçe farklı (el yapımı hissi)
+                const knotNoise = (hashNoise(knotCol, knotRow, 13) - 0.5) * 0.03;
+                r = Math.max(0, Math.min(255, Math.round(r * (1 + knotNoise))));
+                g = Math.max(0, Math.min(255, Math.round(g * (1 + knotNoise))));
+                b = Math.max(0, Math.min(255, Math.round(b * (1 + knotNoise))));
+
+                out[pi] = r;
+                out[pi + 1] = g;
+                out[pi + 2] = b;
+                out[pi + 3] = 255; // Halıda şeffaflık yok
             }
         }
 
