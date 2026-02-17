@@ -197,6 +197,8 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
 
     // 🧶 Uçan pikseller queue'u
     const flyingQueueRef = useRef([]);
+    // 🎨 Bekleyen enhancement timer'ları
+    const pendingEnhancementsRef = useRef({});
 
     // Yün doku texture'ları
     const woolNormal = useMemo(() => createWoolNormalMap(), []);
@@ -257,6 +259,274 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
     // 🧶 İPLİK DOKUMA EFEKTİ
     // =====================================================================
     const THREAD_SIZE = 2; // İplik aralığı (küçük = daha detaylı)
+    const PIXEL_SIZE = 4;  // Mozaik blok boyutu (halıya dokunmuş efekti)
+
+    // =====================================================================
+    // 🎨 CLIENT-SIDE DETERMİNİSTİK ENHANCEMENT
+    // Orijinal çizimi koruyarak "halıya dokunmuş" estetiği verir
+    // AI'dan bağımsız, her zaman çalışır, anında sonuç (50-100ms)
+    // =====================================================================
+
+    // 12 renklik geleneksel kilim paleti
+    const KILIM_PALETTE = [
+        [196, 30, 58],   // kırmızı
+        [26, 58, 107],   // lacivert
+        [200, 169, 81],  // altın
+        [245, 240, 232], // krem
+        [45, 90, 39],    // yeşil
+        [92, 26, 10],    // bordo
+        [232, 162, 62],  // turuncu
+        [61, 43, 31],    // kahverengi
+        [123, 45, 79],   // mor
+        [212, 165, 116], // bej
+        [26, 26, 46],    // gece mavisi
+        [255, 245, 230], // fildişi
+    ];
+
+    // RGB → HSL dönüşümü
+    const rgbToHsl = useCallback((r, g, b) => {
+        r /= 255; g /= 255; b /= 255;
+        const max = Math.max(r, g, b), min = Math.min(r, g, b);
+        let h, s, l = (max + min) / 2;
+        if (max === min) { h = s = 0; }
+        else {
+            const d = max - min;
+            s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+            switch (max) {
+                case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+                case g: h = ((b - r) / d + 2) / 6; break;
+                case b: h = ((r - g) / d + 4) / 6; break;
+            }
+        }
+        return [h, s, l];
+    }, []);
+
+    // HSL → RGB dönüşümü
+    const hslToRgb = useCallback((h, s, l) => {
+        if (s === 0) { const v = Math.round(l * 255); return [v, v, v]; }
+        const hue2rgb = (p, q, t) => {
+            if (t < 0) t += 1; if (t > 1) t -= 1;
+            if (t < 1 / 6) return p + (q - p) * 6 * t;
+            if (t < 1 / 2) return q;
+            if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+            return p;
+        };
+        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        const p = 2 * l - q;
+        return [
+            Math.round(hue2rgb(p, q, h + 1 / 3) * 255),
+            Math.round(hue2rgb(p, q, h) * 255),
+            Math.round(hue2rgb(p, q, h - 1 / 3) * 255)
+        ];
+    }, []);
+
+    // En yakın kilim rengini bul
+    const nearestKilimColor = useCallback((r, g, b) => {
+        let minDist = Infinity, best = [r, g, b];
+        for (const [kr, kg, kb] of KILIM_PALETTE) {
+            const dist = (r - kr) ** 2 + (g - kg) ** 2 + (b - kb) ** 2;
+            if (dist < minDist) { minDist = dist; best = [kr, kg, kb]; }
+        }
+        return best;
+    }, []);
+
+    /**
+     * 🎨 applyWovenEnhancement — Çizimi "halıya dokunmuş" estetiğine dönüştürür
+     * 
+     * Uygulanan efektler (sırasıyla):
+     * 1. Pikselizasyon (mozaik) — her PIXEL_SIZE×PIXEL_SIZE blok aynı renk
+     * 2. Renk doygunluğu artırma — %40 saturation boost
+     * 3. Kontrast artırma — %25 contrast boost
+     * 4. Kilim paleti quantization — en yakın 12 geleneksel renge snap
+     * 5. İplik dokusu overlay — yatay + dikey ince çizgiler
+     * 6. Dekoratif kilim çerçevesi
+     * 
+     * Orijinal şekil %100 korunur, sadece "medium" değişir.
+     */
+    const applyWovenEnhancement = useCallback((ctx, x, y, width, height) => {
+        // 1️⃣ Orijinali tmpCanvas'a kopyala
+        const tmpCanvas = document.createElement('canvas');
+        tmpCanvas.width = width;
+        tmpCanvas.height = height;
+        const tmpCtx = tmpCanvas.getContext('2d');
+
+        // Mevcut canvas'tan bu bölgeyi al
+        const sourceData = ctx.getImageData(x, y, width, height);
+        tmpCtx.putImageData(sourceData, 0, 0);
+
+        // 2️⃣ Piksel piksel işle: mozaik + renk enhancement
+        const imageData = tmpCtx.getImageData(0, 0, width, height);
+        const pixels = imageData.data;
+        const enhanced = new ImageData(width, height);
+        const out = enhanced.data;
+
+        for (let by = 0; by < height; by += PIXEL_SIZE) {
+            for (let bx = 0; bx < width; bx += PIXEL_SIZE) {
+                // Blok içindeki piksellerin ortalamasını al
+                let totalR = 0, totalG = 0, totalB = 0, totalA = 0, count = 0;
+
+                for (let dy = 0; dy < PIXEL_SIZE && (by + dy) < height; dy++) {
+                    for (let dx = 0; dx < PIXEL_SIZE && (bx + dx) < width; dx++) {
+                        const pi = ((by + dy) * width + (bx + dx)) * 4;
+                        totalR += pixels[pi];
+                        totalG += pixels[pi + 1];
+                        totalB += pixels[pi + 2];
+                        totalA += pixels[pi + 3];
+                        count++;
+                    }
+                }
+
+                let avgR = Math.round(totalR / count);
+                let avgG = Math.round(totalG / count);
+                let avgB = Math.round(totalB / count);
+                const avgA = Math.round(totalA / count);
+
+                // Şeffaf pikselleri atla
+                if (avgA < 20) {
+                    for (let dy = 0; dy < PIXEL_SIZE && (by + dy) < height; dy++) {
+                        for (let dx = 0; dx < PIXEL_SIZE && (bx + dx) < width; dx++) {
+                            const oi = ((by + dy) * width + (bx + dx)) * 4;
+                            out[oi] = pixels[oi];
+                            out[oi + 1] = pixels[oi + 1];
+                            out[oi + 2] = pixels[oi + 2];
+                            out[oi + 3] = pixels[oi + 3];
+                        }
+                    }
+                    continue;
+                }
+
+                // Renk doygunluğu artır (+%40)
+                let [h, s, l] = rgbToHsl(avgR, avgG, avgB);
+                s = Math.min(1.0, s * 1.4);
+                // Kontrast artır (+%25)
+                l = 0.5 + (l - 0.5) * 1.25;
+                l = Math.max(0, Math.min(1, l));
+                [avgR, avgG, avgB] = hslToRgb(h, s, l);
+
+                // Kilim paleti quantization (hafif — %60 orijinal + %40 palette)
+                const [kr, kg, kb] = nearestKilimColor(avgR, avgG, avgB);
+                avgR = Math.round(avgR * 0.6 + kr * 0.4);
+                avgG = Math.round(avgG * 0.6 + kg * 0.4);
+                avgB = Math.round(avgB * 0.6 + kb * 0.4);
+
+                // Tüm bloğu bu renkle doldur (mozaik efekti)
+                for (let dy = 0; dy < PIXEL_SIZE && (by + dy) < height; dy++) {
+                    for (let dx = 0; dx < PIXEL_SIZE && (bx + dx) < width; dx++) {
+                        const oi = ((by + dy) * width + (bx + dx)) * 4;
+                        out[oi] = avgR;
+                        out[oi + 1] = avgG;
+                        out[oi + 2] = avgB;
+                        out[oi + 3] = avgA;
+                    }
+                }
+            }
+        }
+
+        // 3️⃣ Enhanced sonucu canvas'a yaz
+        ctx.putImageData(enhanced, x, y);
+
+        // 4️⃣ İplik dokusu overlay — bloklar arası ince çizgiler (dokuma grid)
+        ctx.save();
+        ctx.globalAlpha = 0.12;
+        ctx.strokeStyle = 'rgba(61, 43, 31, 0.35)';
+        ctx.lineWidth = 0.5;
+
+        // Yatay iplik çizgileri
+        for (let ty = 0; ty < height; ty += PIXEL_SIZE) {
+            ctx.beginPath();
+            ctx.moveTo(x, y + ty);
+            ctx.lineTo(x + width, y + ty);
+            ctx.stroke();
+        }
+        // Dikey iplik çizgileri
+        for (let tx = 0; tx < width; tx += PIXEL_SIZE) {
+            ctx.beginPath();
+            ctx.moveTo(x + tx, y);
+            ctx.lineTo(x + tx, y + height);
+            ctx.stroke();
+        }
+        ctx.restore();
+
+        // 5️⃣ Dekoratif kilim çerçevesi
+        const bw = Math.max(4, Math.min(10, Math.min(width, height) * 0.03));
+
+        ctx.save();
+        // Dış çerçeve — koyu border
+        ctx.strokeStyle = 'rgba(92, 26, 10, 0.7)'; // bordo
+        ctx.lineWidth = bw;
+        ctx.strokeRect(x + bw / 2, y + bw / 2, width - bw, height - bw);
+
+        // İç çerçeve — altın
+        ctx.strokeStyle = 'rgba(200, 169, 81, 0.5)'; // altın
+        ctx.lineWidth = Math.max(1.5, bw * 0.4);
+        ctx.strokeRect(x + bw * 1.8, y + bw * 1.8, width - bw * 3.6, height - bw * 3.6);
+
+        // Köşe süsleri — küçük kilim motifleri (baklava dilimi)
+        const cs = Math.max(6, bw * 2);
+        ctx.fillStyle = 'rgba(200, 169, 81, 0.6)';
+
+        // Sol üst — baklava
+        ctx.beginPath();
+        ctx.moveTo(x + bw, y + bw + cs / 2);
+        ctx.lineTo(x + bw + cs / 2, y + bw);
+        ctx.lineTo(x + bw + cs, y + bw + cs / 2);
+        ctx.lineTo(x + bw + cs / 2, y + bw + cs);
+        ctx.closePath();
+        ctx.fill();
+
+        // Sağ üst
+        ctx.beginPath();
+        ctx.moveTo(x + width - bw - cs, y + bw + cs / 2);
+        ctx.lineTo(x + width - bw - cs / 2, y + bw);
+        ctx.lineTo(x + width - bw, y + bw + cs / 2);
+        ctx.lineTo(x + width - bw - cs / 2, y + bw + cs);
+        ctx.closePath();
+        ctx.fill();
+
+        // Sol alt
+        ctx.beginPath();
+        ctx.moveTo(x + bw, y + height - bw - cs / 2);
+        ctx.lineTo(x + bw + cs / 2, y + height - bw - cs);
+        ctx.lineTo(x + bw + cs, y + height - bw - cs / 2);
+        ctx.lineTo(x + bw + cs / 2, y + height - bw);
+        ctx.closePath();
+        ctx.fill();
+
+        // Sağ alt
+        ctx.beginPath();
+        ctx.moveTo(x + width - bw - cs, y + height - bw - cs / 2);
+        ctx.lineTo(x + width - bw - cs / 2, y + height - bw - cs);
+        ctx.lineTo(x + width - bw, y + height - bw - cs / 2);
+        ctx.lineTo(x + width - bw - cs / 2, y + height - bw);
+        ctx.closePath();
+        ctx.fill();
+
+        // Kenar süsleri — üst ve alt kenarda küçük üçgenler
+        ctx.fillStyle = 'rgba(196, 30, 58, 0.4)'; // kırmızı
+        const triSize = Math.max(3, bw * 0.8);
+        const triSpacing = triSize * 3;
+        for (let tx = x + bw * 3 + cs; tx < x + width - bw * 3 - cs; tx += triSpacing) {
+            // Üst kenar üçgenleri
+            ctx.beginPath();
+            ctx.moveTo(tx, y + bw * 1.2);
+            ctx.lineTo(tx + triSize / 2, y + bw * 1.2 + triSize);
+            ctx.lineTo(tx - triSize / 2, y + bw * 1.2 + triSize);
+            ctx.closePath();
+            ctx.fill();
+            // Alt kenar üçgenleri (ters)
+            ctx.beginPath();
+            ctx.moveTo(tx, y + height - bw * 1.2);
+            ctx.lineTo(tx + triSize / 2, y + height - bw * 1.2 - triSize);
+            ctx.lineTo(tx - triSize / 2, y + height - bw * 1.2 - triSize);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        ctx.restore();
+
+        needsUpdateRef.current = true;
+    }, [rgbToHsl, hslToRgb, nearestKilimColor]);
+
 
     // ✍️ Motife dokuma estetiğinde isim yazma
     const renderWovenName = useCallback((ctx, name, x, y, width, height) => {
@@ -303,50 +573,27 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
         img.crossOrigin = 'anonymous';
         img.onload = () => {
             console.log(`✅ drawWovenImage resim yüklendi: ${drawing.width}x${drawing.height}`);
-            // 1️⃣ Önce çizimi tam çözünürlükte direkt yapıştır (canlı renkler)
+            // 1️⃣ Önce çizimi tam çözünürlükte direkt yapıştır
             ctx.save();
             ctx.globalAlpha = 1.0;
             ctx.globalCompositeOperation = 'source-over';
             ctx.drawImage(img, drawing.x, drawing.y, drawing.width, drawing.height);
-
-            // 2️⃣ Üstüne hafif iplik dokusu overlay
-            const tmpCanvas = document.createElement('canvas');
-            tmpCanvas.width = drawing.width;
-            tmpCanvas.height = drawing.height;
-            const tmpCtx = tmpCanvas.getContext('2d');
-            tmpCtx.drawImage(img, 0, 0, drawing.width, drawing.height);
-            const imageData = tmpCtx.getImageData(0, 0, drawing.width, drawing.height);
-            const pixels = imageData.data;
-
-            // İplik çizgileri — belirgin overlay
-            ctx.globalAlpha = 0.08;
-            ctx.globalCompositeOperation = 'source-over';
-
-            for (let ty = 0; ty < drawing.height; ty += THREAD_SIZE) {
-                for (let tx = 0; tx < drawing.width; tx += THREAD_SIZE) {
-                    const pi = (ty * drawing.width + tx) * 4;
-                    const r = pixels[pi], g = pixels[pi + 1], b = pixels[pi + 2], a = pixels[pi + 3];
-                    if (a < 30) continue;
-
-                    ctx.fillStyle = 'rgba(80,50,20,0.25)';
-                    ctx.fillRect(drawing.x + tx, drawing.y + ty + THREAD_SIZE * 0.5, THREAD_SIZE, 0.5);
-                    ctx.fillRect(drawing.x + tx + THREAD_SIZE * 0.5, drawing.y + ty, 0.5, THREAD_SIZE);
-                }
-            }
-
             ctx.restore();
 
-            // ✍️ İsim render
+            // 2️⃣ 🎨 Dokuma enhancement uygula (mozaik + renk + çerçeve)
+            applyWovenEnhancement(ctx, drawing.x, drawing.y, drawing.width, drawing.height);
+
+            // 3️⃣ ✍️ İsim render
             renderWovenName(ctx, drawing.userName, drawing.x, drawing.y, drawing.width, drawing.height);
 
             needsUpdateRef.current = true;
-            console.log(`✅ drawWovenImage tamamlandı: ${drawing.id?.substring(0, 15)}`);
+            console.log(`✅ drawWovenImage + enhancement tamamlandı: ${drawing.id?.substring(0, 15)}`);
         };
         img.onerror = (e) => {
             console.error('❌ drawWovenImage resim yüklenemedi!', drawing.id, e);
         };
         img.src = drawing.dataUrl;
-    }, [renderWovenName]);
+    }, [renderWovenName, applyWovenEnhancement]);
 
     // =====================================================================
     // 🚀 UÇAN PİKSEL SİSTEMİ — Çizimden 3D parçacıklara
@@ -487,9 +734,29 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
 
             // 🔊 Uçuş başlangıç sesi
             try { audioManager.playWhoosh(); } catch (e) { }
+
+            // 🎨 Tüm pikseller konduktan sonra enhancement uygula
+            // Tahmini süre: (pixelIndex * 3ms offset) + (~1.5sn uçuş) + 500ms buffer
+            const estimatedLandTime = Math.min(pixelIndex * 3 + 2000, 5000);
+            const drawingId = drawing.id || `${Date.now()}`;
+
+            // Önceki timer varsa iptal et (aynı çizim tekrar geldiyse)
+            if (pendingEnhancementsRef.current[drawingId]) {
+                clearTimeout(pendingEnhancementsRef.current[drawingId]);
+            }
+
+            pendingEnhancementsRef.current[drawingId] = setTimeout(() => {
+                const ctx = offscreenCtxRef.current;
+                if (ctx) {
+                    console.log(`🎨 Enhancement uygulanıyor: ${drawingId.substring(0, 15)}`);
+                    applyWovenEnhancement(ctx, drawing.x, drawing.y, drawing.width, drawing.height);
+                    renderWovenName(ctx, drawing.userName, drawing.x, drawing.y, drawing.width, drawing.height);
+                }
+                delete pendingEnhancementsRef.current[drawingId];
+            }, estimatedLandTime);
         };
         img.src = drawing.dataUrl;
-    }, [canvasToWorld, carpetWidth, carpetDepth]);
+    }, [canvasToWorld, carpetWidth, carpetDepth, applyWovenEnhancement, renderWovenName]);
 
     // 🛬 Piksel konduğunda — canvas'a canlı renk + glow olarak çiz
     const handleLand = useCallback((item) => {
@@ -594,7 +861,7 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
         aiImg.src = aiDataUrl;
     }, []);
 
-    // AI Blend: Orijinal çizim üzerine AI'ı HAFIF overlay (max %35)
+    // AI Blend: Orijinal çizim üzerine AI'ı HAFIF overlay (max %35) + enhancement
     const startAIBlend = useCallback((ctx, aiImg, userName, x, y, width, height) => {
         const blendSteps = 6;
         let step = 0;
@@ -603,35 +870,21 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
             if (step >= blendSteps) {
                 clearInterval(blendInterval);
 
-                // SON ADIM: AI overlay (max MAX_AI_BLEND opacity) + kilim çerçevesi
+                // SON ADIM: AI overlay (max MAX_AI_BLEND opacity)
                 ctx.save();
                 ctx.globalAlpha = MAX_AI_BLEND;
                 ctx.globalCompositeOperation = 'source-over';
                 ctx.drawImage(aiImg, x, y, width, height);
                 ctx.restore();
 
-                // 🧵 Kilim çerçevesi — dekoratif kenar (orijinale dokunmadan)
-                applyKilimBorder(ctx, x, y, width, height);
-
-                // 🧶 İplik dokusu overlay (çizimin dokuma hissi vermesi)
-                ctx.save();
-                ctx.globalAlpha = 0.06;
-                const ts = 2;
-                for (let ty = 0; ty < height; ty += ts) {
-                    ctx.fillStyle = 'rgba(80,50,20,0.2)';
-                    ctx.fillRect(x, y + ty + ts * 0.5, width, 0.5);
-                }
-                for (let tx = 0; tx < width; tx += ts) {
-                    ctx.fillStyle = 'rgba(80,50,20,0.2)';
-                    ctx.fillRect(x + tx + ts * 0.5, y, 0.5, height);
-                }
-                ctx.restore();
+                // 🎨 Dokuma enhancement uygula (mozaik + renk + çerçeve)
+                applyWovenEnhancement(ctx, x, y, width, height);
 
                 // ✍️ İsim render
                 renderWovenName(ctx, userName, x, y, width, height);
 
                 needsUpdateRef.current = true;
-                console.log(`✨ AI enhancement tamamlandı! (blend: ${MAX_AI_BLEND})`);
+                console.log(`✨ AI + enhancement tamamlandı! (blend: ${MAX_AI_BLEND})`);
                 return;
             }
 
@@ -645,7 +898,7 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
             needsUpdateRef.current = true;
             step++;
         }, 70);
-    }, [renderWovenName]);
+    }, [renderWovenName, applyWovenEnhancement]);
 
     // 🧵 Kilim tarzı dekoratif çerçeve (orijinal çizime dokunmadan kenar ekler)
     const applyKilimBorder = useCallback((ctx, x, y, width, height) => {
