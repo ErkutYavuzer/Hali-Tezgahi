@@ -7,11 +7,11 @@
 
 const API_URL = process.env.AI_API_URL || 'https://antigravity2.mindops.net/v1/chat/completions';
 const API_KEY = process.env.AI_API_KEY || 'sk-antigravity-lejyon-2026';
-const MODEL = process.env.AI_MODEL || 'gemini-3-pro-image-1x1';
+const MODEL = process.env.AI_MODEL || 'gemini-3-pro-image';
 
-const MAX_RETRIES = 2;
-const RETRY_DELAY_MS = 12000; // 12 saniye (503 retryDelay ~10-40s)
-const REQUEST_TIMEOUT_MS = 120000; // 120 saniye
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 15000; // 15 saniye
+const REQUEST_TIMEOUT_MS = 180000; // 180 saniye (image gen yavaş olabilir)
 
 // AI motif dönüşüm durumu
 let activeRequests = 0;
@@ -74,9 +74,11 @@ async function callGeminiWithRetry(base64DataUrl, attempt = 1) {
         const result = await callGeminiAPI(base64DataUrl);
         return result;
     } catch (err) {
-        if (attempt < MAX_RETRIES && (err.status === 503 || err.status === 429)) {
-            const delay = RETRY_DELAY_MS * attempt;
-            console.log(`⏳ AI retry ${attempt}/${MAX_RETRIES} — ${delay / 1000}s bekleniyor... (${err.message})`);
+        if (attempt <= MAX_RETRIES && (err.status === 503 || err.status === 429)) {
+            // Sunucudan gelen retryDelay varsa kullan, yoksa default
+            const serverDelay = err.retryDelay ? err.retryDelay * 1000 : 0;
+            const delay = Math.max(RETRY_DELAY_MS * attempt, serverDelay);
+            console.log(`⏳ AI retry ${attempt}/${MAX_RETRIES} — ${Math.round(delay / 1000)}s bekleniyor... (${err.message})`);
             await sleep(delay);
             return callGeminiWithRetry(base64DataUrl, attempt + 1);
         }
@@ -124,6 +126,13 @@ async function callGeminiAPI(base64DataUrl) {
             const errData = await response.json().catch(() => ({}));
             const err = new Error(errData?.error?.message || `HTTP ${response.status}`);
             err.status = response.status;
+            // 503'te retryDelay hint'i al
+            if (errData?.error?.details) {
+                const retryInfo = errData.error.details.find(d => d.retryDelay);
+                if (retryInfo) {
+                    err.retryDelay = parseInt(retryInfo.retryDelay) || 30;
+                }
+            }
             throw err;
         }
 
