@@ -78,7 +78,7 @@ export async function transformToMotif(base64DataUrl) {
 /**
  * Gemini native image generation ile kilim motifine dönüştürme
  */
-async function generateKilimMotif(base64DataUrl) {
+async function generateKilimMotif(base64DataUrl, retryCount = 0) {
     const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
     // data:image/png;base64, prefix'ini çıkar
@@ -137,16 +137,23 @@ async function generateKilimMotif(base64DataUrl) {
         return null;
 
     } catch (err) {
-        if (err.status === 429) {
-            console.warn('⏳ Rate limit — 5s bekliyor...');
-            await sleep(5000);
-            return generateKilimMotif(base64DataUrl); // Retry
+        // Detaylı hata logla
+        console.error(`❌ Gemini API Hatası:`, JSON.stringify({
+            status: err.status,
+            message: err.message?.substring(0, 200),
+            code: err.code,
+        }));
+
+        if (err.status === 429 && retryCount < 2) {
+            const waitTime = (retryCount + 1) * 15000;
+            console.warn(`⏳ Rate limit — ${waitTime / 1000}s bekliyor... (deneme ${retryCount + 1}/2)`);
+            await sleep(waitTime);
+            return generateKilimMotif(base64DataUrl, retryCount + 1);
         }
         if (err.message?.includes('SAFETY')) {
-            console.warn('⚠️ Safety filter tetiklendi — fallback yok');
-            return null;
+            console.warn('⚠️ Safety filter tetiklendi');
         }
-        throw err;
+        return null;
     }
 }
 
