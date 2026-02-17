@@ -773,12 +773,11 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
             // 🔊 Uçuş başlangıç sesi
             try { audioManager.playWhoosh(); } catch (e) { }
 
-            // 🎨 Tüm pikseller konduktan sonra enhancement uygula
-            // Tahmini süre: (pixelIndex * 3ms offset) + (~1.5sn uçuş) + 500ms buffer
+            // 🎨 Tüm pikseller konduktan sonra → DÖNEN IŞIK başlat (AI bekliyor)
             const estimatedLandTime = Math.min(pixelIndex * 3 + 2000, 5000);
             const drawingId = drawing.id || `${Date.now()}`;
 
-            // Önceki timer varsa iptal et (aynı çizim tekrar geldiyse)
+            // Önceki timer varsa iptal et
             if (pendingEnhancementsRef.current[drawingId]) {
                 clearTimeout(pendingEnhancementsRef.current[drawingId]);
             }
@@ -786,15 +785,14 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
             pendingEnhancementsRef.current[drawingId] = setTimeout(() => {
                 const ctx = offscreenCtxRef.current;
                 if (ctx) {
-                    console.log(`🎨 Enhancement uygulanıyor: ${drawingId.substring(0, 15)}`);
-                    applyWovenEnhancement(ctx, drawing.x, drawing.y, drawing.width, drawing.height);
-                    renderWovenName(ctx, drawing.userName, drawing.x, drawing.y, drawing.width, drawing.height);
+                    console.log(`💫 Dönen ışık başlatılıyor: ${drawingId.substring(0, 15)}`);
+                    startSpinningLight(drawingId, drawing.x, drawing.y, drawing.width, drawing.height);
                 }
                 delete pendingEnhancementsRef.current[drawingId];
             }, estimatedLandTime);
         };
         img.src = drawing.dataUrl;
-    }, [canvasToWorld, carpetWidth, carpetDepth, applyWovenEnhancement, renderWovenName]);
+    }, [canvasToWorld, carpetWidth, carpetDepth]);
 
     // 🛬 Piksel konduğunda — canvas'a canlı renk + glow olarak çiz
     const handleLand = useCallback((item) => {
@@ -843,107 +841,135 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
     }, []);
 
     // =====================================================================
-    // 🤖 AI ENHANCEMENT OVERLAY — Orijinal çizimi KORUYARAK güzelleştirme
+    // 💫 DÖNEN IŞIK + 🤖 AI MOTİF DÖNÜŞÜMÜ
     // =====================================================================
-    // MAX_AI_BLEND: AI motifi bu opacity'de halıya dokunur
-    // v4.6+: AI tam geometrik kilim motifi üretiyor, dominant olmalı
-    const MAX_AI_BLEND = 0.80;
+    const spinningLightsRef = useRef({}); // { drawingId: intervalId }
+    const drawingSnapshotsRef = useRef({}); // çizim verilerini sakla
 
+    // 💫 Motif alanı etrafında dönen altın ışık (AI beklerken)
+    const startSpinningLight = useCallback((drawingId, x, y, width, height) => {
+        // Mevcut ışık varsa durdur
+        if (spinningLightsRef.current[drawingId]) {
+            clearInterval(spinningLightsRef.current[drawingId]);
+        }
+
+        // Orijinal çizim snapshot'ı al (ışık üzerine çizince bozulmasın diye)
+        const ctx = offscreenCtxRef.current;
+        if (!ctx) return;
+        const snapshot = ctx.getImageData(x, y, width, height);
+        drawingSnapshotsRef.current[drawingId] = { snapshot, x, y, width, height };
+
+        let angle = 0;
+        const cx = x + width / 2;
+        const cy = y + height / 2;
+        const radius = Math.max(width, height) * 0.55;
+
+        spinningLightsRef.current[drawingId] = setInterval(() => {
+            const ctx = offscreenCtxRef.current;
+            if (!ctx) return;
+
+            // Önce snapshot'ı geri koy (önceki frame'in ışığını temizle)
+            const snap = drawingSnapshotsRef.current[drawingId];
+            if (snap) {
+                ctx.putImageData(snap.snapshot, snap.x, snap.y);
+            }
+
+            // Dönen ışık noktası çiz
+            const lx = cx + Math.cos(angle) * radius;
+            const ly = cy + Math.sin(angle) * radius;
+
+            ctx.save();
+            // Ana ışık noktası
+            const glow = ctx.createRadialGradient(lx, ly, 0, lx, ly, radius * 0.5);
+            glow.addColorStop(0, 'rgba(255, 215, 0, 0.6)');
+            glow.addColorStop(0.3, 'rgba(255, 180, 50, 0.3)');
+            glow.addColorStop(0.7, 'rgba(255, 150, 0, 0.1)');
+            glow.addColorStop(1, 'rgba(255, 215, 0, 0)');
+            ctx.fillStyle = glow;
+            ctx.fillRect(x - radius * 0.5, y - radius * 0.5, width + radius, height + radius);
+
+            // İkinci ışık (karşı tarafta, daha soluk)
+            const lx2 = cx + Math.cos(angle + Math.PI) * radius * 0.8;
+            const ly2 = cy + Math.sin(angle + Math.PI) * radius * 0.8;
+            const glow2 = ctx.createRadialGradient(lx2, ly2, 0, lx2, ly2, radius * 0.3);
+            glow2.addColorStop(0, 'rgba(200, 169, 81, 0.3)');
+            glow2.addColorStop(1, 'rgba(200, 169, 81, 0)');
+            ctx.fillStyle = glow2;
+            ctx.fillRect(x - radius * 0.3, y - radius * 0.3, width + radius * 0.6, height + radius * 0.6);
+
+            // Kenar çerçeve glow
+            ctx.strokeStyle = `rgba(255, 215, 0, ${0.15 + Math.sin(angle * 2) * 0.1})`;
+            ctx.lineWidth = 2;
+            ctx.strokeRect(x - 1, y - 1, width + 2, height + 2);
+
+            ctx.restore();
+            needsUpdateRef.current = true;
+            angle += 0.12; // dönüş hızı
+        }, 40); // ~25fps
+
+        console.log(`💫 Dönen ışık aktif: ${drawingId.substring(0, 15)}`);
+    }, []);
+
+    // 🤖 AI motif geldi — ışığı durdur, motifi yerleştir
     const morphToAIMotif = useCallback(({ id, aiDataUrl, userName, x, y, width, height }) => {
         const ctx = offscreenCtxRef.current;
         if (!ctx || !aiDataUrl) return;
 
-        console.log(`🤖✨ AI enhancement başlıyor: ${id?.substring(0, 15)} (max blend: ${MAX_AI_BLEND})`);
+        console.log(`🤖✨ AI motif dönüşümü başlıyor: ${id?.substring(0, 15)}`);
 
+        // 1. Dönen ışığı DURDUR
+        if (spinningLightsRef.current[id]) {
+            clearInterval(spinningLightsRef.current[id]);
+            delete spinningLightsRef.current[id];
+            console.log(`💫 Işık durduruldu: ${id?.substring(0, 15)}`);
+        }
+
+        // 2. Pending enhancement varsa iptal et
+        if (pendingEnhancementsRef.current[id]) {
+            clearTimeout(pendingEnhancementsRef.current[id]);
+            delete pendingEnhancementsRef.current[id];
+        }
+
+        // 3. Orijinal snapshot'ı geri koy (ışık efektini temizle)
+        const snap = drawingSnapshotsRef.current[id];
+        if (snap) {
+            ctx.putImageData(snap.snapshot, snap.x, snap.y);
+            delete drawingSnapshotsRef.current[id];
+        }
+
+        // 4. AI motifini yükle ve yerleştir
         const aiImg = new Image();
         aiImg.crossOrigin = 'anonymous';
         aiImg.onload = () => {
-            // 💡 Orijinal çizim ZATEN canvas'ta — silmiyoruz!
-            // AI sonucunu sadece hafif overlay olarak uyguluyoruz
+            // Parlak flash efekti (dönüşüm anı)
+            ctx.save();
+            ctx.fillStyle = 'rgba(255, 235, 180, 0.7)';
+            ctx.fillRect(x, y, width, height);
+            ctx.restore();
+            needsUpdateRef.current = true;
 
-            // Aşama 1: Yumuşak altın ışıltı (dönüşüm başladı sinyali)
-            const glowFrames = 10;
-            let frame = 0;
-
-            const glowInterval = setInterval(() => {
-                if (frame >= glowFrames) {
-                    clearInterval(glowInterval);
-                    // Aşama 2: AI overlay — BLEND, replace DEĞİL!
-                    startAIBlend(ctx, aiImg, userName, x, y, width, height);
-                    return;
-                }
-
-                ctx.save();
-                const intensity = Math.sin((frame / glowFrames) * Math.PI) * 0.3;
-                ctx.globalAlpha = intensity;
-                ctx.globalCompositeOperation = 'lighter';
-
-                const gradient = ctx.createRadialGradient(
-                    x + width / 2, y + height / 2, 0,
-                    x + width / 2, y + height / 2, Math.max(width, height) * 0.6
-                );
-                gradient.addColorStop(0, 'rgba(255, 215, 0, 0.5)');
-                gradient.addColorStop(0.6, 'rgba(255, 180, 0, 0.2)');
-                gradient.addColorStop(1, 'rgba(255, 215, 0, 0)');
-                ctx.fillStyle = gradient;
-                ctx.fillRect(x - 5, y - 5, width + 10, height + 10);
-
-                ctx.restore();
-                needsUpdateRef.current = true;
-                frame++;
-            }, 50);
-        };
-        aiImg.onerror = (e) => {
-            console.error('❌ AI enhancement: resim yüklenemedi', e);
-        };
-        aiImg.src = aiDataUrl;
-    }, []);
-
-    // AI Blend: AI kilim motifini çizimin YERİNE koy (replace, overlay değil)
-    const startAIBlend = useCallback((ctx, aiImg, userName, x, y, width, height) => {
-        const blendSteps = 8;
-        let step = 0;
-
-        const blendInterval = setInterval(() => {
-            if (step >= blendSteps) {
-                clearInterval(blendInterval);
-
-                // SON ADIM: Orijinali SİL, AI motifini tam yerleştir
+            // 200ms sonra: orijinali sil, AI motifini koy
+            setTimeout(() => {
                 ctx.save();
                 ctx.clearRect(x, y, width, height);
                 ctx.globalAlpha = 1.0;
-                ctx.globalCompositeOperation = 'source-over';
                 ctx.drawImage(aiImg, x, y, width, height);
                 ctx.restore();
 
-                // ✍️ İsim render (enhancement yapma — AI zaten motif)
+                // İsim yaz
                 renderWovenName(ctx, userName, x, y, width, height);
-
                 needsUpdateRef.current = true;
                 console.log(`✨ AI kilim motifi yerleştirildi! (${width}x${height})`);
-                return;
+            }, 200);
+        };
+        aiImg.onerror = (e) => {
+            console.error('❌ AI motif resim yüklenemedi', e);
+            // Hata durumunda snapshot'ı geri koy
+            if (snap) {
+                ctx.putImageData(snap.snapshot, snap.x, snap.y);
             }
-
-            // Kademeli geçiş: orijinal → AI motif
-            const progress = (step + 1) / blendSteps;
-            ctx.save();
-            // Orijinali kademeli sil
-            ctx.globalAlpha = progress * 0.15;
-            ctx.globalCompositeOperation = 'destination-out';
-            ctx.fillStyle = 'white';
-            ctx.fillRect(x, y, width, height);
-            ctx.restore();
-
-            // AI motifi kademeli ekle
-            ctx.save();
-            ctx.globalAlpha = progress;
-            ctx.globalCompositeOperation = 'source-over';
-            ctx.drawImage(aiImg, x, y, width, height);
-            ctx.restore();
-
-            needsUpdateRef.current = true;
-            step++;
-        }, 80);
+        };
+        aiImg.src = aiDataUrl;
     }, [renderWovenName]);
 
     // 🧵 Kilim tarzı dekoratif çerçeve (orijinal çizime dokunmadan kenar ekler)
