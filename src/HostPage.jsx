@@ -57,65 +57,38 @@ function FloatingDust({ count = 80 }) {
   );
 }
 
-// 🌟 HALININ ARKASINDA SICAK HALO GLOW
-function BackdropGlow() {
-  const meshRef = useRef();
+// BackdropGlow kaldırıldı — halı boşlukta süzülüyor, arka plan saf siyah
 
-  useFrame((state) => {
-    const t = state.clock.elapsedTime;
-    if (meshRef.current) {
-      meshRef.current.material.opacity = 0.15 + Math.sin(t * 0.4) * 0.04;
-    }
-  });
-
-  return (
-    <mesh ref={meshRef} position={[0, 22, -3]}>
-      <planeGeometry args={[40, 55]} />
-      <meshBasicMaterial
-        color="#f5a623"
-        transparent
-        opacity={0.15}
-        side={THREE.DoubleSide}
-        blending={THREE.AdditiveBlending}
-        depthWrite={false}
-      />
-    </mesh>
-  );
-}
-
-// 🧶 HALININ NEFES ALMA ANİMASYONU — Boşlukta süzülen kilim
+// 🧶 HALININ RÜZGAR ANİMASYONU — Boşlukta süzülen, hafif sallanan kilim
 function BreathingCarpet({ socket }) {
   const groupRef = useRef();
+  const innerRef = useRef();
   const carpetWidth = CONFIG.CARPET_WIDTH;
   const carpetDepth = CONFIG.CARPET_DEPTH;
 
   useFrame((state) => {
+    const t = state.clock.elapsedTime;
     if (groupRef.current) {
-      const t = state.clock.elapsedTime;
-      // Hafif yukarı-aşağı nefes (süzülme hissi)
-      groupRef.current.position.y = 22 + Math.sin(t * 0.25) * 0.4;
-      // Çok ince yatay salınım
-      groupRef.current.rotation.y = Math.sin(t * 0.12) * 0.008;
+      // 🌬️ Yumuşak rüzgar sallanımı
+      // Y pozisyon: yavaş nefes alma (süzülme hissi)
+      groupRef.current.position.y = 22 + Math.sin(t * 0.3) * 0.6;
+      // Y rotation: hafif yalpalama
+      groupRef.current.rotation.y = Math.sin(t * 0.15) * 0.012;
+    }
+    if (innerRef.current) {
+      // X rotation: öne-arkaya rüzgar eğimi (tabii halat etkisi)
+      innerRef.current.rotation.x = Math.PI / 2 + Math.sin(t * 0.2) * 0.015;
+      // Z rotation: sola-sağa hafif eğim (rüzgar değişimi)
+      innerRef.current.rotation.z = Math.sin(t * 0.25 + 1.5) * 0.008;
     }
   });
 
-  // CarpetBoard mesh zaten rotation={[-π/2,0,0]} ile yatırıyor.
-  // Wrapper'da +π/2 ile geri dikiyoruz → kameraya bakan dikey halı.
-  // position={[0,22,0]} → sahne merkezinde, kamera hedefinde.
   return (
     <group ref={groupRef} position={[0, 22, 0]}>
-      <group rotation={[Math.PI / 2, 0, 0]}>
+      <group ref={innerRef} rotation={[Math.PI / 2, 0, 0]}>
         <CarpetBoard socket={socket} carpetWidth={carpetWidth} carpetDepth={carpetDepth}>
           <CarpetBorder width={carpetWidth} depth={carpetDepth} />
           <CarpetFringes width={carpetWidth} depth={carpetDepth} />
-          <mesh position={[0, -0.05, 0]} receiveShadow>
-            <boxGeometry args={[carpetWidth + BORDER_WIDTH * 2 + 0.05, 0.04, carpetDepth + BORDER_WIDTH * 2 + 0.05]} />
-            <meshStandardMaterial color="#300000" roughness={1} />
-          </mesh>
-          <mesh position={[0, -0.08, 0]} receiveShadow>
-            <boxGeometry args={[carpetWidth + BORDER_WIDTH * 2, 0.02, carpetDepth + BORDER_WIDTH * 2]} />
-            <meshBasicMaterial color="#000" />
-          </mesh>
         </CarpetBoard>
       </group>
     </group>
@@ -257,9 +230,8 @@ export default function HostPage() {
         shadows dpr={[1, 2]}
         gl={{ antialias: true, powerPreference: "high-performance", preserveDrawingBuffer: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.2 }}
       >
-        {/* 🌌 Derin uzay — siyah değil, çok koyu lacivert */}
-        <color attach="background" args={['#050508']} />
-        <fog attach="fog" args={['#050508', 150, 400]} />
+        {/* 🌌 Saf siyah — halı boşlukta süzülüyor */}
+        <color attach="background" args={['#000000']} />
 
         <PerspectiveCamera makeDefault position={[0, 24, 55]} fov={50} />
         <OrbitControls
@@ -308,8 +280,7 @@ export default function HostPage() {
         {/* 🧶 SAHNEDEKİ NESNELER                              */}
         {/* ═══════════════════════════════════════════════════ */}
 
-        {/* 🌟 Halının arkasında sıcak halo glow */}
-        <BackdropGlow />
+        {/* BackdropGlow kaldırıldı — saf siyah arka plan */}
 
         {/* ✨ Havada süzülen altın toz parçacıkları */}
         <FloatingDust count={60} />
@@ -318,7 +289,7 @@ export default function HostPage() {
         <BreathingCarpet socket={socket} />
 
         {/* ✨ Başlık — halının hemen üstünde, zarif */}
-        <group position={[0, 46, 1]}>
+        <group position={[0, 40, 1]}>
           <Text
             fontSize={3.2} anchorX="center" anchorY="middle"
             letterSpacing={0.5}
