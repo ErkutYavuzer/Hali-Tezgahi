@@ -100,8 +100,9 @@ function saveData() {
 }
 
 // 🎯 Dinamik ızgara yerleştirme (dokumacı sayısına göre otomatik boyut)
-const TEX_W = 2400;
-const TEX_H = 4000;
+// 4224x1536 ekran için optimize — halı texture boyutu
+const TEX_W = 2534;
+const TEX_H = 4224;
 const PAD = 5;
 
 // Dokumacı sayısına göre en uygun ızgara düzenini hesapla
