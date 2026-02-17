@@ -773,7 +773,7 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
             // 🔊 Uçuş başlangıç sesi
             try { audioManager.playWhoosh(); } catch (e) { }
 
-            // 🎨 Tüm pikseller konduktan sonra → DÖNEN IŞIK başlat (AI bekliyor)
+            // 🎨 Pikseller konduktan sonra → sadece isim yaz (AI ayrı gelecek)
             const estimatedLandTime = Math.min(pixelIndex * 3 + 2000, 5000);
             const drawingId = drawing.id || `${Date.now()}`;
 
@@ -785,14 +785,15 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
             pendingEnhancementsRef.current[drawingId] = setTimeout(() => {
                 const ctx = offscreenCtxRef.current;
                 if (ctx) {
-                    console.log(`💫 Dönen ışık başlatılıyor: ${drawingId.substring(0, 15)}`);
-                    startSpinningLight(drawingId, drawing.x, drawing.y, drawing.width, drawing.height);
+                    renderWovenName(ctx, drawing.userName, drawing.x, drawing.y, drawing.width, drawing.height);
+                    needsUpdateRef.current = true;
+                    console.log(`✍️ İsim yazıldı: ${drawing.userName} (${drawingId.substring(0, 15)})`);
                 }
                 delete pendingEnhancementsRef.current[drawingId];
             }, estimatedLandTime);
         };
         img.src = drawing.dataUrl;
-    }, [canvasToWorld, carpetWidth, carpetDepth]);
+    }, [canvasToWorld, carpetWidth, carpetDepth, renderWovenName]);
 
     // 🛬 Piksel konduğunda — canvas'a canlı renk + glow olarak çiz
     const handleLand = useCallback((item) => {
@@ -841,168 +842,60 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
     }, []);
 
     // =====================================================================
-    // 💫 DÖNEN IŞIK + 🤖 AI MOTİF DÖNÜŞÜMÜ
+    // 🤖 AI MOTİF DÖNÜŞÜMÜ — Basit ve temiz
     // =====================================================================
-    const spinningLightsRef = useRef({}); // { drawingId: intervalId }
-    const drawingSnapshotsRef = useRef({}); // çizim verilerini sakla
 
-    // 💫 Motif alanı etrafında dönen altın ışık (AI beklerken)
-    const startSpinningLight = useCallback((drawingId, x, y, width, height) => {
-        // Mevcut ışık varsa durdur
-        if (spinningLightsRef.current[drawingId]) {
-            clearInterval(spinningLightsRef.current[drawingId]);
-        }
-
-        // Orijinal çizim snapshot'ı al — geniş alan (çizim taşması dahil)
-        const ctx = offscreenCtxRef.current;
-        const canvas = offscreenCanvasRef.current;
-        if (!ctx || !canvas) return;
-        const pad = Math.max(width, height) * 0.5;
-        const snapX = Math.max(0, Math.floor(x - pad));
-        const snapY = Math.max(0, Math.floor(y - pad));
-        const snapW = Math.min(canvas.width - snapX, Math.ceil(width + pad * 2));
-        const snapH = Math.min(canvas.height - snapY, Math.ceil(height + pad * 2));
-        const snapshot = ctx.getImageData(snapX, snapY, snapW, snapH);
-        drawingSnapshotsRef.current[drawingId] = { snapshot, x: snapX, y: snapY, width: snapW, height: snapH };
-
-        let angle = 0;
-        const cx = x + width / 2;
-        const cy = y + height / 2;
-        const radius = Math.max(width, height) * 0.55;
-
-        spinningLightsRef.current[drawingId] = setInterval(() => {
-            const ctx = offscreenCtxRef.current;
-            if (!ctx) return;
-
-            // Önce snapshot'ı geri koy (önceki frame'in ışığını temizle)
-            const snap = drawingSnapshotsRef.current[drawingId];
-            if (snap) {
-                ctx.putImageData(snap.snapshot, snap.x, snap.y);
-            }
-
-            // Dönen ışık noktası çiz
-            const lx = cx + Math.cos(angle) * radius;
-            const ly = cy + Math.sin(angle) * radius;
-
-            ctx.save();
-            // Ana ışık noktası
-            const glow = ctx.createRadialGradient(lx, ly, 0, lx, ly, radius * 0.5);
-            glow.addColorStop(0, 'rgba(255, 215, 0, 0.6)');
-            glow.addColorStop(0.3, 'rgba(255, 180, 50, 0.3)');
-            glow.addColorStop(0.7, 'rgba(255, 150, 0, 0.1)');
-            glow.addColorStop(1, 'rgba(255, 215, 0, 0)');
-            ctx.fillStyle = glow;
-            ctx.fillRect(x - radius * 0.5, y - radius * 0.5, width + radius, height + radius);
-
-            // İkinci ışık (karşı tarafta, daha soluk)
-            const lx2 = cx + Math.cos(angle + Math.PI) * radius * 0.8;
-            const ly2 = cy + Math.sin(angle + Math.PI) * radius * 0.8;
-            const glow2 = ctx.createRadialGradient(lx2, ly2, 0, lx2, ly2, radius * 0.3);
-            glow2.addColorStop(0, 'rgba(200, 169, 81, 0.3)');
-            glow2.addColorStop(1, 'rgba(200, 169, 81, 0)');
-            ctx.fillStyle = glow2;
-            ctx.fillRect(x - radius * 0.3, y - radius * 0.3, width + radius * 0.6, height + radius * 0.6);
-
-            // Kenar çerçeve glow
-            ctx.strokeStyle = `rgba(255, 215, 0, ${0.15 + Math.sin(angle * 2) * 0.1})`;
-            ctx.lineWidth = 2;
-            ctx.strokeRect(x - 1, y - 1, width + 2, height + 2);
-
-            ctx.restore();
-            needsUpdateRef.current = true;
-            angle += 0.12; // dönüş hızı
-        }, 40); // ~25fps
-
-        console.log(`💫 Dönen ışık aktif: ${drawingId.substring(0, 15)}`);
-    }, []);
-
-    // 🤖 AI motif geldi — ışığı durdur, motifi yerleştir
+    // 🤖 AI motif geldi — orijinali temizle, AI motifini yerleştir
     const morphToAIMotif = useCallback(({ id, aiDataUrl, userName, x, y, width, height }) => {
         const ctx = offscreenCtxRef.current;
-        if (!ctx || !aiDataUrl) return;
+        const canvas = offscreenCanvasRef.current;
+        if (!ctx || !canvas || !aiDataUrl) return;
 
-        console.log(`🤖✨ AI motif dönüşümü başlıyor: ${id?.substring(0, 15)}`);
+        console.log(`🤖✨ AI motif dönüşümü: ${id?.substring(0, 15)}`);
 
-        // 1. Dönen ışığı DURDUR
-        if (spinningLightsRef.current[id]) {
-            clearInterval(spinningLightsRef.current[id]);
-            delete spinningLightsRef.current[id];
-            console.log(`💫 Işık durduruldu: ${id?.substring(0, 15)}`);
-        }
-
-        // 2. Pending enhancement varsa iptal et
+        // Pending enhancement varsa iptal et (flying pixels henüz bitmemiş olabilir)
         if (pendingEnhancementsRef.current[id]) {
             clearTimeout(pendingEnhancementsRef.current[id]);
             delete pendingEnhancementsRef.current[id];
         }
 
-        // 3. Orijinal snapshot'ı geri koy (ışık efektini temizle)
-        const snap = drawingSnapshotsRef.current[id];
-        if (snap) {
-            ctx.putImageData(snap.snapshot, snap.x, snap.y);
-            delete drawingSnapshotsRef.current[id];
-        }
-
-        // 4. AI motifini yükle ve yerleştir
         const aiImg = new Image();
         aiImg.crossOrigin = 'anonymous';
         aiImg.onload = () => {
-            // Orijinal çizimin dışarı taşan kısımlarını temizlemek için
-            // motif alanından %50 daha geniş bir alanı temizle
+            // Geniş alan temizle (orijinal çizim taşması dahil)
             const pad = Math.max(width, height) * 0.5;
             const clearX = Math.max(0, x - pad);
             const clearY = Math.max(0, y - pad);
-            const canvas = offscreenCanvasRef.current;
             const clearW = Math.min(canvas.width - clearX, width + pad * 2);
             const clearH = Math.min(canvas.height - clearY, height + pad * 2);
 
-            // Parlak flash efekti (dönüşüm anı) — geniş alan
             ctx.save();
-            ctx.fillStyle = 'rgba(255, 235, 180, 0.7)';
+            // Alanı temizle
+            ctx.clearRect(clearX, clearY, clearW, clearH);
+            // Halı zemin geri koy
+            ctx.fillStyle = '#f0e4d0';
             ctx.fillRect(clearX, clearY, clearW, clearH);
+            // İplik grid
+            ctx.strokeStyle = 'rgba(80,50,20,0.03)';
+            ctx.lineWidth = 0.3;
+            for (let gx = Math.floor(clearX / 4) * 4; gx < clearX + clearW; gx += 4) {
+                ctx.beginPath(); ctx.moveTo(gx, clearY); ctx.lineTo(gx, clearY + clearH); ctx.stroke();
+            }
+            for (let gy = Math.floor(clearY / 4) * 4; gy < clearY + clearH; gy += 4) {
+                ctx.beginPath(); ctx.moveTo(clearX, gy); ctx.lineTo(clearX + clearW, gy); ctx.stroke();
+            }
+            // AI motifini yerleştir
+            ctx.globalAlpha = 1.0;
+            ctx.drawImage(aiImg, x, y, width, height);
             ctx.restore();
+
+            // İsim yaz
+            renderWovenName(ctx, userName, x, y, width, height);
             needsUpdateRef.current = true;
-
-            // 200ms sonra: geniş alanı temizle, halı zemin + AI motifi koy
-            setTimeout(() => {
-                ctx.save();
-                // Geniş alanı tamamen temizle (orijinal çizim kalıntıları dahil)
-                ctx.clearRect(clearX, clearY, clearW, clearH);
-                // Halı zemin rengini geri koy (temizlenen alan için)
-                ctx.fillStyle = '#f0e4d0';
-                ctx.fillRect(clearX, clearY, clearW, clearH);
-                // Hafif iplik grid geri çiz
-                ctx.strokeStyle = 'rgba(80,50,20,0.03)';
-                ctx.lineWidth = 0.3;
-                for (let gx = Math.floor(clearX / 4) * 4; gx < clearX + clearW; gx += 4) {
-                    ctx.beginPath();
-                    ctx.moveTo(gx, clearY);
-                    ctx.lineTo(gx, clearY + clearH);
-                    ctx.stroke();
-                }
-                for (let gy = Math.floor(clearY / 4) * 4; gy < clearY + clearH; gy += 4) {
-                    ctx.beginPath();
-                    ctx.moveTo(clearX, gy);
-                    ctx.lineTo(clearX + clearW, gy);
-                    ctx.stroke();
-                }
-                // AI motifini yerleştir
-                ctx.globalAlpha = 1.0;
-                ctx.drawImage(aiImg, x, y, width, height);
-                ctx.restore();
-
-                // İsim yaz
-                renderWovenName(ctx, userName, x, y, width, height);
-                needsUpdateRef.current = true;
-                console.log(`✨ AI kilim motifi yerleştirildi! (${width}x${height})`);
-            }, 200);
+            console.log(`✨ AI kilim motifi yerleştirildi! (${width}x${height})`);
         };
         aiImg.onerror = (e) => {
-            console.error('❌ AI motif resim yüklenemedi', e);
-            // Hata durumunda snapshot'ı geri koy
-            if (snap) {
-                ctx.putImageData(snap.snapshot, snap.x, snap.y);
-            }
+            console.error('❌ AI motif yüklenemedi', e);
         };
         aiImg.src = aiDataUrl;
     }, [renderWovenName]);
