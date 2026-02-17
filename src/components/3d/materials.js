@@ -92,93 +92,93 @@ function createParquetTexture() {
     return texture;
 }
 
-// 🎨 KILIM REHBERİ: İmece Modu İçin (Silik Desen)
-function createKilimGuideTexture() {
-    const canvas = document.createElement('canvas');
-    canvas.width = 512;
-    canvas.height = 1024;
-    const ctx = canvas.getContext('2d');
 
-    // Şeffaf Zemin
-    ctx.clearRect(0, 0, 512, 1024);
 
-    // Ana Baklava Deseni (Diamond) - 🎨 DAHA İNCE VE SİLİK
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)'; // Beyaz, daha net kontrast
-    ctx.lineWidth = 4; // Çok daha ince çizgiler
 
-    // 3 Büyük Baklava
-    for (let i = 0; i < 3; i++) {
-        const centerY = 170 + i * 340;
-        ctx.beginPath();
-        ctx.moveTo(256, centerY - 140);
-        ctx.lineTo(420, centerY);
-        ctx.lineTo(256, centerY + 140);
-        ctx.lineTo(92, centerY);
-        ctx.closePath();
-        ctx.stroke();
-
-        // İç Detay (Koçboynuzu Sembolü Basitleştirilmiş)
-        ctx.beginPath();
-        ctx.arc(256, centerY, 40, 0, Math.PI * 2);
-        ctx.stroke();
-    }
-
-    // Kenar Suyu (Border)
-    ctx.beginPath();
-    ctx.moveTo(40, 0);
-    ctx.lineTo(40, 1024);
-    ctx.moveTo(472, 0);
-    ctx.lineTo(472, 1024);
-    ctx.setLineDash([20, 10]); // Kesik çizgiler
-    ctx.stroke();
-    ctx.setLineDash([]); // Reset
-
-    const texture = new THREE.CanvasTexture(canvas);
-    return texture;
-}
-
-// Halı Kenarı Dokusu Oluşturucu
+// Halı Kenarı Dokusu Oluşturucu — Zengin Anadolu Motifli
 export function createCarpetBorderTexture() {
     const canvas = document.createElement('canvas');
-    canvas.width = 512;
-    canvas.height = 128;
+    canvas.width = 1024;
+    canvas.height = 256;
     const ctx = canvas.getContext('2d');
 
     // Ana Zemin (Koyu Kırmızı/Bordo)
     ctx.fillStyle = '#8e2323';
-    ctx.fillRect(0, 0, 512, 128);
+    ctx.fillRect(0, 0, 1024, 256);
 
-    // Altın Şeritler (Kenar Sınırları)
+    // Altın Şerit Çerçeve (Çift şerit)
     ctx.fillStyle = '#d4af37';
-    ctx.fillRect(0, 10, 512, 10);
-    ctx.fillRect(0, 108, 512, 10);
+    ctx.fillRect(0, 8, 1024, 6);
+    ctx.fillRect(0, 18, 1024, 3);
+    ctx.fillRect(0, 235, 1024, 3);
+    ctx.fillRect(0, 242, 1024, 6);
 
-    // Motifler (Basit Geometrik Baklava Deseni)
-    ctx.fillStyle = '#f5f6fa'; // Krem
-    for (let i = 0; i < 512; i += 64) {
+    // İnce krem iç çizgiler
+    ctx.fillStyle = '#f5e6c8';
+    ctx.fillRect(0, 28, 1024, 2);
+    ctx.fillRect(0, 226, 1024, 2);
+
+    // Ana Motif Band — Baklava Deseni (Koçboynuzu stili)
+    for (let i = 0; i < 1024; i += 80) {
+        // Büyük baklava
+        ctx.fillStyle = '#f5f0e0';
         ctx.beginPath();
-        ctx.moveTo(i + 32, 30);
-        ctx.lineTo(i + 52, 64);
-        ctx.lineTo(i + 32, 98);
-        ctx.lineTo(i + 12, 64);
+        ctx.moveTo(i + 40, 38);
+        ctx.lineTo(i + 70, 128);
+        ctx.lineTo(i + 40, 218);
+        ctx.lineTo(i + 10, 128);
+        ctx.closePath();
         ctx.fill();
 
-        // İç Detay (Nakış Efekti)
-        ctx.strokeStyle = 'rgba(0,0,0,0.1)';
-        ctx.lineWidth = 1;
-        for (let j = 0; j < 64; j += 4) {
-            ctx.beginPath();
-            ctx.moveTo(i + j, 0);
-            ctx.lineTo(i + j, 128);
-            ctx.stroke();
-        }
+        // İç baklava (kırmızı)
+        ctx.fillStyle = '#b22222';
+        ctx.beginPath();
+        ctx.moveTo(i + 40, 58);
+        ctx.lineTo(i + 58, 128);
+        ctx.lineTo(i + 40, 198);
+        ctx.lineTo(i + 22, 128);
+        ctx.closePath();
+        ctx.fill();
+
+        // İç iç motif (altın yıldız)
+        ctx.fillStyle = '#d4af37';
+        ctx.beginPath();
+        ctx.moveTo(i + 40, 78);
+        ctx.lineTo(i + 50, 128);
+        ctx.lineTo(i + 40, 178);
+        ctx.lineTo(i + 30, 128);
+        ctx.closePath();
+        ctx.fill();
+
+        // Merkez nokta
+        ctx.beginPath();
+        ctx.arc(i + 40, 128, 5, 0, Math.PI * 2);
+        ctx.fillStyle = '#1a0808';
+        ctx.fill();
+
+        // Baklavalar arası küçük motifler  
+        ctx.fillStyle = '#d4af37';
+        ctx.beginPath();
+        ctx.arc(i, 128, 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Üst-alt küçük üçgenler
+        ctx.fillStyle = '#f5e6c8';
+        ctx.beginPath();
+        ctx.moveTo(i, 35); ctx.lineTo(i + 8, 50); ctx.lineTo(i - 8, 50);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(i, 221); ctx.lineTo(i + 8, 206); ctx.lineTo(i - 8, 206);
+        ctx.closePath();
+        ctx.fill();
     }
 
-    // Kenar Dikiş İzleri (Stitches)
+    // Dikiş İzleri (Stitches)
     ctx.strokeStyle = '#4e0d0d';
-    ctx.setLineDash([5, 5]);
-    ctx.lineWidth = 2;
-    ctx.strokeRect(5, 5, 502, 118);
+    ctx.setLineDash([4, 4]);
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(4, 4, 1016, 248);
     ctx.setLineDash([]);
 
     const texture = new THREE.CanvasTexture(canvas);
@@ -194,44 +194,21 @@ export function createCarpetBorderTexture() {
 export const WOOL_TEXTURE = createWoolTexture();
 export const WOOL_NORMAL = createWoolNormalMap();
 export const WOOD_TEXTURE = createParquetTexture();
-export const KILIM_GUIDE_TEXTURE = createKilimGuideTexture();
 
 export const SHARED_BOX_GEO = new THREE.BoxGeometry(CONFIG.NODE_SIZE * 0.99, 0.06, CONFIG.NODE_SIZE * 0.99);
 
 // 🎨 Uçan pikseller için dikişli iplik materyali
 export const FLYING_MAT = new THREE.MeshStandardMaterial({
-    roughness: 0.2, // Daha pürüzsüz
+    roughness: 0.2,
     metalness: 0.1,
     map: WOOL_TEXTURE,
     normalMap: WOOL_NORMAL,
     transparent: true,
     opacity: 1,
-    emissive: '#000000', // Emissive kapalı (görünürlük testi)
+    emissive: '#000000',
     emissiveIntensity: 0,
-    toneMapped: true // Normal render
+    toneMapped: true
 });
-
-// Üçgenler için Geometri (Extrude Ayarları)
-const EXTRUDE_SETTINGS = { depth: 0.05, bevelEnabled: false };
-
-const TRIANGLE_SHAPE_TL = new THREE.Shape();
-TRIANGLE_SHAPE_TL.moveTo(-0.5 * CONFIG.NODE_SIZE * 0.99, 0.5 * CONFIG.NODE_SIZE * 0.99);
-TRIANGLE_SHAPE_TL.lineTo(0.5 * CONFIG.NODE_SIZE * 0.99, 0.5 * CONFIG.NODE_SIZE * 0.99);
-TRIANGLE_SHAPE_TL.lineTo(-0.5 * CONFIG.NODE_SIZE * 0.99, -0.5 * CONFIG.NODE_SIZE * 0.99);
-TRIANGLE_SHAPE_TL.lineTo(-0.5 * CONFIG.NODE_SIZE * 0.99, 0.5 * CONFIG.NODE_SIZE * 0.99);
-
-const TRIANGLE_SHAPE_BR = new THREE.Shape();
-TRIANGLE_SHAPE_BR.moveTo(0.5 * CONFIG.NODE_SIZE * 0.99, 0.5 * CONFIG.NODE_SIZE * 0.99);
-TRIANGLE_SHAPE_BR.lineTo(0.5 * CONFIG.NODE_SIZE * 0.99, -0.5 * CONFIG.NODE_SIZE * 0.99);
-TRIANGLE_SHAPE_BR.lineTo(-0.5 * CONFIG.NODE_SIZE * 0.99, -0.5 * CONFIG.NODE_SIZE * 0.99);
-TRIANGLE_SHAPE_BR.lineTo(0.5 * CONFIG.NODE_SIZE * 0.99, 0.5 * CONFIG.NODE_SIZE * 0.99);
-
-export const SHARED_TRI_TL_GEO = new THREE.ExtrudeGeometry(TRIANGLE_SHAPE_TL, EXTRUDE_SETTINGS);
-export const SHARED_TRI_BR_GEO = new THREE.ExtrudeGeometry(TRIANGLE_SHAPE_BR, EXTRUDE_SETTINGS);
-
-// Merkezlemek için
-SHARED_TRI_TL_GEO.center();
-SHARED_TRI_BR_GEO.center();
 
 // Püskül Geometrisi (Uca doğru incelen ve hafif bükülen lifler)
 export const FRINGE_GEO = new THREE.CylinderGeometry(0.005, 0.018, 0.7, 6);

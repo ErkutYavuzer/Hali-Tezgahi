@@ -23,6 +23,7 @@ build/
 Thumbs.db
 
 # Logs
+.env
 logs
 *.log
 npm-debug.log*

@@ -17,12 +17,11 @@ function getLocalIp() {
 
   for (const name of Object.keys(interfaces)) {
     for (const iface of interfaces[name]) {
-      // IPv4 ve internal olmayan (127.0.0.1 gibi) adresi bul
       if (iface.family === 'IPv4' && !iface.internal) {
         if (iface.address.startsWith('192.168.')) {
-          return iface.address; // Öncelikli IP bulundu
+          return iface.address;
         }
-        if (!preferredIp) preferredIp = iface.address; // Yedek IP (örn: 172.x veya 10.x)
+        if (!preferredIp) preferredIp = iface.address;
       }
     }
   }
@@ -33,33 +32,47 @@ const LOCAL_IP = getLocalIp();
 console.log(`🌍 Sunucu IP Adresi: ${LOCAL_IP}`);
 
 const app = express();
+
+// CORS — telefonlardan erişim için
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET');
+  next();
+});
+
+// Test endpoint
+app.get('/', (req, res) => res.send('🦅 Halı Tezgahı Sunucusu çalışıyor!'));
+
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: "*", // origin "*" iken credentials: true olamaz
+    origin: "*",
     methods: ["GET", "POST"]
   },
   allowEIO3: true,
   pingTimeout: 60000,
-  pingInterval: 25000
+  pingInterval: 25000,
+  maxHttpBufferSize: 5e6 // 5MB - base64 çizimler için
 });
 
-// Slot Yönetimi (6x10 = 60 kare)
-const TOTAL_SLOTS = 60;
-const PIXELS_PER_SLOT = 16;
-let availableSlots = Array.from({ length: TOTAL_SLOTS }, (_, i) => i);
-let carpetState = Array(TOTAL_SLOTS).fill(null).map(() => Array(PIXELS_PER_SLOT * PIXELS_PER_SLOT).fill('#9c8d76'));
+// ============================================================================
+// ÇİZİM YÖNETİMİ
+// ============================================================================
 
-// 💾 VERİ YÜKLEME (Başlangıçta)
+let MAX_DRAWINGS = 28; // Varsayılan (4x7 ızgara)
+
+// Her çizim: { id, dataUrl, x, y, width, height, rotation, timestamp }
+let drawings = [];
+
+// 💾 VERİ YÜKLEME
 function loadData() {
   if (fs.existsSync(DATA_FILE)) {
     try {
       const raw = fs.readFileSync(DATA_FILE, 'utf-8');
       const data = JSON.parse(raw);
-      if (data.carpetState && data.availableSlots) {
-        carpetState = data.carpetState;
-        availableSlots = data.availableSlots;
-        console.log('💾 Kayıtlı halı verisi yüklendi!');
+      if (data.drawings) {
+        drawings = data.drawings;
+        console.log(`💾 ${drawings.length} çizim yüklendi.`);
       }
     } catch (e) {
       console.error('Veri yükleme hatası:', e);
@@ -68,96 +81,210 @@ function loadData() {
 }
 loadData();
 
-// 💾 VERİ KAYDETME (Throttle ile - Her 2 saniyede bir max)
+// 💾 VERİ KAYDETME (Throttled)
 let saveTimeout = null;
 function saveData() {
   if (saveTimeout) clearTimeout(saveTimeout);
   saveTimeout = setTimeout(() => {
     try {
-      const data = { carpetState, availableSlots };
-      fs.writeFileSync(DATA_FILE, JSON.stringify(data));
-      // console.log('💾 Veri diskte güncellendi.'); // Log kirliliği olmaması için kapalı
+      fs.writeFileSync(DATA_FILE, JSON.stringify({ drawings }));
     } catch (e) {
       console.error('Veri kaydetme hatası:', e);
     }
   }, 2000);
 }
 
-// 🚀 PERFORMANS: Update Batching (50ms)
-let updateBuffer = [];
-let progressDirty = false;
+// 🎯 Dinamik ızgara yerleştirme (dokumacı sayısına göre otomatik boyut)
+const TEX_W = 1600;
+const TEX_H = 2667;
+const PAD = 5;
 
-setInterval(() => {
-  if (updateBuffer.length > 0) {
-    // Toplu güncelleme gönder
-    io.emit('batch-update', updateBuffer);
-    updateBuffer = [];
+// Dokumacı sayısına göre en uygun ızgara düzenini hesapla
+function getGridLayout(maxDrawings) {
+  const aspect = TEX_W / TEX_H;
+
+  let bestCols = 1, bestRows = maxDrawings;
+  let bestWaste = Infinity;
+
+  for (let cols = 1; cols <= maxDrawings; cols++) {
+    const rows = Math.ceil(maxDrawings / cols);
+    const cellW = (TEX_W - PAD * 2) / cols;
+    const cellH = (TEX_H - PAD * 2) / rows;
+    const cellAspect = cellW / cellH;
+    const waste = Math.abs(cellAspect - 1.0) + Math.abs(cols * rows - maxDrawings) * 0.01;
+    if (waste < bestWaste) {
+      bestWaste = waste;
+      bestCols = cols;
+      bestRows = rows;
+    }
   }
 
-  if (progressDirty) {
-    // İlerleme durumunu gönder
-    const filledCount = TOTAL_SLOTS - availableSlots.length;
-    io.emit('carpet-progress', {
-      filledSlots: filledCount,
-      totalSlots: TOTAL_SLOTS,
-      percent: Math.round((filledCount / TOTAL_SLOTS) * 100)
-    });
-    progressDirty = false;
-  }
-}, 50);
+  const cellW = Math.floor((TEX_W - PAD * 2) / bestCols);
+  const cellH = Math.floor((TEX_H - PAD * 2) / bestRows);
+
+  return { cols: bestCols, rows: bestRows, cellW, cellH };
+}
+
+function getGridPlacement(index) {
+  const { cols, rows, cellW, cellH } = getGridLayout(MAX_DRAWINGS);
+  const slot = index % (cols * rows);
+  const col = slot % cols;
+  const row = Math.floor(slot / cols);
+
+  return {
+    x: PAD + col * cellW,
+    y: PAD + row * cellH,
+    width: cellW,
+    height: cellH,
+    rotation: 0,
+  };
+}
+
+// ============================================================================
+// SOCKET.IO
+// ============================================================================
+
+let clientCount = 0;
+const lastDrawingTime = new Map(); // Rate limiting: socketId → timestamp
+const RATE_LIMIT_MS = 10000; // 10 saniye
 
 io.on('connection', (socket) => {
+  clientCount++;
   console.log('🦅 Bir dokumacı bağlandı:', socket.id);
+  io.emit('client-count', clientCount);
 
-  // 📡 İstemciye IP adresini gönder (QR kod için)
+  // 📡 İstemciye IP adresini gönder
   socket.emit('server-ip', { ip: LOCAL_IP, port: PORT });
 
-  const filledCount = TOTAL_SLOTS - availableSlots.length;
-  socket.emit('initial-carpet', {
-    carpetState,
-    progress: {
-      filledSlots: filledCount,
-      totalSlots: TOTAL_SLOTS,
-      percent: Math.round((filledCount / TOTAL_SLOTS) * 100)
+  // Mevcut çizimleri gönder
+  socket.emit('initial-carpet', { drawings });
+  socket.emit('drawing-count', drawings.length);
+  socket.emit('client-count', clientCount);
+
+  // 🔑 Bileşen geç mount olduğunda veriyi tekrar iste
+  socket.on('request-initial-carpet', () => {
+    console.log(`🔄 ${socket.id} halı verisini tekrar istedi`);
+    socket.emit('initial-carpet', { drawings });
+    socket.emit('drawing-count', drawings.length);
+  });
+
+  // ⚙️ Max drawing sayısını değiştir + mevcut çizimleri yeniden yerleştir
+  socket.on('set-max-drawings', (val) => {
+    const num = parseInt(val);
+    if (num >= 12 && num <= 60) {
+      MAX_DRAWINGS = num;
+      console.log(`⚙️ Max dokumacı sayısı: ${MAX_DRAWINGS}`);
+
+      // 🔄 Mevcut çizimlerin yerleşimini yeniden hesapla
+      drawings = drawings.slice(0, MAX_DRAWINGS).map((d, i) => {
+        const placement = getGridPlacement(i);
+        return { ...d, ...placement };
+      });
+
+      // Tüm client'lara güncel halıyı gönder (sıfırla + yeniden çiz)
+      io.emit('carpet-reset');
+      io.emit('initial-carpet', { drawings });
+      io.emit('drawing-count', drawings.length);
+      saveData();
+
+      console.log(`🔄 ${drawings.length} çizim yeniden yerleştirildi.`);
     }
   });
 
-  socket.on('pixel-data', (pixels) => {
-    if (availableSlots.length === 0) {
-      console.log('🔄 Halı doldu! SIFIRLAMA GÖNDERİLİYOR...');
-      io.emit('carpet-reset');
-      availableSlots = Array.from({ length: TOTAL_SLOTS }, (_, i) => i);
-      carpetState = Array(TOTAL_SLOTS).fill(null);
-      saveData();
+  // 🎨 Yeni çizim geldi
+  socket.on('drawing-data', (dataUrl) => {
+    if (!dataUrl || typeof dataUrl !== 'string') return;
+
+    // ⏱️ Rate limiting — aynı kullanıcıdan max 1 çizim/3sn
+    const now = Date.now();
+    const lastTime = lastDrawingTime.get(socket.id) || 0;
+    if (now - lastTime < 3000) {
+      socket.emit('rate-limited', { waitMs: 3000 - (now - lastTime) });
+      return;
+    }
+    lastDrawingTime.set(socket.id, now);
+
+    // Max sınırı kontrol et
+    if (drawings.length >= MAX_DRAWINGS) {
+      console.log('🎉 Halı tamamlandı! Kutlama gönderiliyor...');
+      io.emit('carpet-complete', { total: MAX_DRAWINGS });
       return;
     }
 
-    const randomIndex = Math.floor(Math.random() * availableSlots.length);
-    const targetSlot = availableSlots[randomIndex];
-    availableSlots.splice(randomIndex, 1);
-    carpetState[targetSlot] = pixels;
+    const placement = getGridPlacement(drawings.length);
+    const drawing = {
+      id: Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+      dataUrl,
+      ...placement,
+      timestamp: Date.now()
+    };
 
-    saveData(); // Değişikliği kaydet
+    drawings.push(drawing);
+    saveData();
 
-    const filledSlots = TOTAL_SLOTS - availableSlots.length;
-    const progressPercent = Math.round((filledSlots / TOTAL_SLOTS) * 100);
+    // Tüm host'lara yeni çizimi gönder
+    io.emit('new-drawing', drawing);
+    io.emit('drawing-count', drawings.length);
 
-    // 🚀 Buffer'a ekle (Anında göndermek yerine)
-    updateBuffer.push({ slotId: targetSlot, pixels: pixels });
-    progressDirty = true;
+    // Son çizim mi? Tamamlanma kontrolü
+    if (drawings.length >= MAX_DRAWINGS) {
+      console.log('🎉 Halı tamamlandı! Kutlama gönderiliyor...');
+      setTimeout(() => io.emit('carpet-complete', { total: MAX_DRAWINGS }), 500);
+    }
 
-    // Konsolu çok kirletmemek için logu da azalttık
-    // console.log(`📡 VERİ EKLENDİ! Buffer: ${updateBuffer.length}`);
+    console.log(`🎨 Yeni çizim! Toplam: ${drawings.length}/${MAX_DRAWINGS}`);
   });
 
+  // 🧹 Manuel sıfırlama
   socket.on('manual-reset', () => {
     console.log('🧹 MANUEL TEMİZLİK EMRİ GELDİ!');
+    drawings = [];
     io.emit('carpet-reset');
-    availableSlots = Array.from({ length: TOTAL_SLOTS }, (_, i) => i);
-    carpetState = Array(TOTAL_SLOTS).fill(null).map(() => Array(PIXELS_PER_SLOT * PIXELS_PER_SLOT).fill('#9c8d76'));
-    saveData(); // Temizliği kaydet
+    io.emit('drawing-count', 0);
+    saveData();
     console.log('✨ Sunucu hafızası sıfırlandı.');
   });
+
+  socket.on('disconnect', () => {
+    clientCount--;
+    lastDrawingTime.delete(socket.id);
+    io.emit('client-count', clientCount);
+  });
+
+  // 📱 Telefondan halı görüntüsü isteği (socket.io üzerinden — firewall sorunu yok)
+  socket.on('request-carpet-image', () => {
+    const imgPath = path.join(__dirname, 'carpet_latest.png');
+    if (fs.existsSync(imgPath)) {
+      const base64 = fs.readFileSync(imgPath, 'base64');
+      socket.emit('carpet-image-data', `data:image/png;base64,${base64}`);
+      console.log('📱 Halı görüntüsü telefona gönderildi!');
+    } else {
+      socket.emit('carpet-image-data', null);
+    }
+  });
+
+  // 📸 Halı görüntüsünü kaydet (kutlama anında host'tan gelir)
+  socket.on('carpet-image-save', (dataUrl) => {
+    try {
+      const base64 = dataUrl.replace(/^data:image\/png;base64,/, '');
+      fs.writeFileSync(path.join(__dirname, 'carpet_latest.png'), base64, 'base64');
+      console.log('📸 Halı görüntüsü kaydedildi!');
+    } catch (err) {
+      console.error('❌ Halı görüntüsü kaydetme hatası:', err.message);
+    }
+  });
+});
+
+// 📥 Halı görüntüsü indirme endpoint'i
+app.get('/carpet-image', (req, res) => {
+  const imgPath = path.join(__dirname, 'carpet_latest.png');
+  if (fs.existsSync(imgPath)) {
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Content-Disposition', 'attachment; filename="hali_tezgahi.png"');
+    res.sendFile(imgPath);
+  } else {
+    res.status(404).send('Henüz halı görüntüsü yok.');
+  }
 });
 
 const PORT = 3003;

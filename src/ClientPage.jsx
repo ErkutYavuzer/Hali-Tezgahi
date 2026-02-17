@@ -1,118 +1,105 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { io } from 'socket.io-client';
+import { CONFIG, PALETTE_CATEGORIES, THEME } from './constants';
 
-// Geniş Renk Paleti - Geleneksel Halı Renkleri + Modern Tonlar 🎨
-// Geniş Renk Paleti - Açıktan Koyuya Sıralı 🎨
-const PALETTE = [
-  // 🏮 SICAK (Sarı -> Turuncu -> Kırmızı -> Bordo)
-  '#fff200', '#f1c40f', '#f39c12', '#e1b12c', '#e67e22', '#d35400',
-  '#ff7979', '#eb4d4b', '#e74c3c', '#c0392b', '#b33939', '#8B0000',
+// 🎨 Fırça boyutları
+const BRUSH_SIZES = [3, 6, 10, 16, 24];
 
-  // 🌿 DOĞA (Fıstık -> Yeşil -> Zümrüt -> Koyu Yeşil)
-  '#badc58', '#6ab04c', '#2ecc71', '#27ae60', '#1abc9c', '#16a085', '#218c74', '#006266',
+// 💫 CSS Animasyonları
+const GLOBAL_STYLES = `
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
-  // 🌊 DENİZ (Buz -> Mavi -> Lacivert)
-  '#7ed6df', '#22a6b3', '#3498db', '#2980b9', '#30336b', '#130f40', '#273c75', '#192a56',
-
-  // 🔮 MİSTİK (Pembe -> Mor -> Mürdüm)
-  '#ff9ff3', '#f368e0', '#be2edd', '#8e44ad', '#9b59b6', '#574b90',
-
-  // 🗿 NÖTR & TOPRAK (Beyaz -> Gri -> Kahve -> Siyah)
-  '#ffffff', '#ecf0f1', '#bdc3c7', '#95a5a6', '#7f8c8d', '#535c68', '#34495e', '#2c3e50',
-  '#cd6133', '#cc8e35', '#834c32', '#5d4037', '#000000'
-];
-
-const GRID_SIZE = 16;
-const createEmptyPixel = () => ({ tl: '#ffffff', br: '#ffffff' });
-
-// 🏺 HAZIR MOTİFLER (16x16 Taslaklar)
-const MOTIFS = {
-  BAKLAVA: {
-    name: 'Baklava', icon: '🔶',
-    generate: (color) => {
-      const arr = Array(GRID_SIZE * GRID_SIZE).fill(null).map(createEmptyPixel);
-      for (let y = 0; y < 16; y++) {
-        for (let x = 0; x < 16; x++) {
-          const dist = Math.abs(x - 7.5) + Math.abs(y - 7.5);
-          if (dist < 7) arr[y * 16 + x] = { tl: color, br: color };
-        }
-      }
-      return arr;
-    }
-  },
-  YILDIZ: {
-    name: 'Yıldız', icon: '⭐',
-    generate: (color) => {
-      const arr = Array(GRID_SIZE * GRID_SIZE).fill(null).map(createEmptyPixel);
-      for (let i = 0; i < 16; i++) {
-        arr[i * 16 + 8] = { tl: color, br: color };
-        arr[8 * 16 + i] = { tl: color, br: color };
-        arr[i * 16 + i] = { tl: color, br: color };
-        arr[i * 16 + (15 - i)] = { tl: color, br: color };
-      }
-      return arr;
-    }
-  },
-  ELIBELINDE: {
-    name: 'Elibelinde', icon: '🏺',
-    generate: (color) => {
-      const arr = Array(GRID_SIZE * GRID_SIZE).fill(null).map(createEmptyPixel);
-      const draw = (x, y) => { if (x >= 0 && x < 16 && y >= 0 && y < 16) arr[y * 16 + x] = { tl: color, br: color }; };
-      // Basit Elibelinde Formu
-      for (let y = 4; y < 12; y++) draw(8, y);
-      for (let x = 6; x < 11; x++) { draw(x, 4); draw(x, 11); }
-      draw(5, 5); draw(11, 5); draw(5, 6); draw(11, 6);
-      draw(5, 10); draw(11, 10); draw(5, 9); draw(11, 9);
-      return arr;
-    }
-  },
-  GOZ: {
-    name: 'Göz', icon: '👁️',
-    generate: (color) => {
-      const arr = Array(GRID_SIZE * GRID_SIZE).fill(null).map(createEmptyPixel);
-      for (let y = 0; y < 16; y++) {
-        for (let x = 0; x < 16; x++) {
-          const dx = x - 7.5; const dy = y - 7.5;
-          const dist = Math.sqrt(dx * dx + dy * dy * 2);
-          if (dist > 3 && dist < 6) arr[y * 16 + x] = { tl: color, br: color };
-          if (dist < 1.5) arr[y * 16 + x] = { tl: color, br: color };
-        }
-      }
-      return arr;
-    }
+  @keyframes shimmer {
+    0% { background-position: -200% center; }
+    100% { background-position: 200% center; }
   }
-};
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.05); opacity: 0.9; }
+  }
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(15px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes bounceIn {
+    0% { transform: scale(0.3); opacity: 0; }
+    50% { transform: scale(1.08); }
+    70% { transform: scale(0.95); }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  @keyframes successPop {
+    0% { transform: scale(1); }
+    15% { transform: scale(0.92); }
+    30% { transform: scale(1.15); }
+    50% { transform: scale(0.98); }
+    70% { transform: scale(1.03); }
+    100% { transform: scale(1); }
+  }
+  @keyframes checkDraw {
+    0% { stroke-dashoffset: 24; opacity: 0; }
+    30% { opacity: 1; }
+    100% { stroke-dashoffset: 0; opacity: 1; }
+  }
+  @keyframes ripple {
+    0% { transform: scale(0); opacity: 0.6; }
+    100% { transform: scale(4); opacity: 0; }
+  }
+  @keyframes gentleFloat {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-3px); }
+  }
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateX(-10px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
 
-const TOOLS = {
-  PENCIL: 'pencil',
-  ERASER: 'eraser',
-  FILL: 'fill',
-};
+  /* Scrollbar gizle */
+  .client-page::-webkit-scrollbar { display: none; }
+  .client-page { scrollbar-width: none; }
 
-// 🎨 Tasarım Jetonları (Design Tokens)
-const THEME = {
-  bg: 'radial-gradient(circle at top right, #1a1a2e, #0f0f1a)',
-  glass: 'rgba(255, 255, 255, 0.05)',
-  glassBorder: '1px solid rgba(255, 255, 255, 0.1)',
-  accent: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-  accentGold: 'linear-gradient(135deg, #ffd700 0%, #b8860b 100%)',
-  shadow: '0 8px 32px 0 rgba(0, 0, 0, 0.37)'
-};
+  /* Kategori scroll */
+  .color-row::-webkit-scrollbar { display: none; }
+  .color-row { scrollbar-width: none; }
+`;
 
 export default function ClientPage() {
-  const [selectedColor, setSelectedColor] = useState(PALETTE[0]);
-  const [pixels, setPixels] = useState(Array(GRID_SIZE * GRID_SIZE).fill(null).map(createEmptyPixel));
-  const [isSymmetry, setIsSymmetry] = useState(true);
-  const [drawMode, setDrawMode] = useState('full');
-  const [currentTool, setCurrentTool] = useState(TOOLS.PENCIL);
-  const [showGrid, setShowGrid] = useState(true);
-  const [gridOpacity, setGridOpacity] = useState(0.2); // 🆕 Grid Şeffaflığı
-  const [recentColors, setRecentColors] = useState([]); // 🆕 Son Kullanılan Renkler
-  const [history, setHistory] = useState([]);
-  const [canUndo, setCanUndo] = useState(false);
-
+  const canvasRef = useRef(null);
+  const ctxRef = useRef(null);
   const socketRef = useRef(null);
+  const isDrawingRef = useRef(false);
+  const lastPosRef = useRef(null);
+  const historyRef = useRef([]);
+  const historyIndexRef = useRef(-1);
 
+  const [selectedColor, setSelectedColor] = useState('#c0392b');
+  const [brushSize, setBrushSize] = useState(10);
+  const [currentTool, setCurrentTool] = useState('brush'); // brush | marker | spray | star | calligraphy | eraser | fill
+  const [recentColors, setRecentColors] = useState([]);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+  const [connected, setConnected] = useState(false);
+  const [sendState, setSendState] = useState('idle'); // idle | sending | success
+  const [activeCat, setActiveCat] = useState(0);
+
+  // Canvas başlat
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const size = CONFIG.CANVAS_RESOLUTION;
+    canvas.width = size;
+    canvas.height = size;
+
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.clearRect(0, 0, size, size);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctxRef.current = ctx;
+
+    saveToHistory();
+  }, []);
+
+  // Socket bağlantısı
   useEffect(() => {
     const socketUrl = window.location.protocol + "//" + window.location.hostname + ":3003";
     socketRef.current = io(socketUrl, {
@@ -121,28 +108,20 @@ export default function ClientPage() {
       reconnectionDelay: 1000,
       upgrade: true
     });
-    // carpet-progress listener removed
-    // initial-carpet progress listener removed
 
-    // 📱 JİROSKOP (SAVUR-GÖNDER) ENTEGRASYONU
+    socketRef.current.on('connect', () => setConnected(true));
+    socketRef.current.on('disconnect', () => setConnected(false));
+
+    // 📱 JİROSKOP (SAVUR-GÖNDER)
     const handleMotion = (event) => {
       const acc = event.accelerationIncludingGravity;
       if (!acc) return;
-
-      // Z eksenindeki ani ivmelenme (Telefonu ileri savurma)
-      // Eşik değer: 15 (Normal hareketlerden ayırmak için)
       const threshold = 15;
       const totalForce = Math.abs(acc.x) + Math.abs(acc.y) + Math.abs(acc.z);
-
       if (totalForce > threshold) {
-        // Debounce: Çok sık tetiklenmesini önle
         const now = Date.now();
         if (!window._lastFlick || now - window._lastFlick > 2000) {
           window._lastFlick = now;
-          // Ekranda motif varsa gönder
-          // Not: pixels state'ine doğrudan erişmek yerine sendMotif'i tetikleyebiliriz.
-          // Ancak useEffect içindeki event listener state'in güncel halini görmeyebilir.
-          // Bu yüzden bir ref veya trigger mekanizması gerekebilir.
           document.getElementById('send-trigger-btn')?.click();
         }
       }
@@ -158,313 +137,727 @@ export default function ClientPage() {
     };
   }, []);
 
-  const saveToHistory = useCallback((currentPixels) => {
-    setHistory(prev => {
-      const newHistory = [...prev, JSON.stringify(currentPixels)];
-      if (newHistory.length > 30) newHistory.shift();
-      return newHistory;
-    });
-    setCanUndo(true);
+  // Undo/Redo History
+  const saveToHistory = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const data = canvas.toDataURL('image/png');
+    const idx = historyIndexRef.current;
+    historyRef.current = historyRef.current.slice(0, idx + 1);
+    historyRef.current.push(data);
+    if (historyRef.current.length > 30) historyRef.current.shift();
+    historyIndexRef.current = historyRef.current.length - 1;
+    setCanUndo(historyIndexRef.current > 0);
+    setCanRedo(false);
   }, []);
 
   const undo = useCallback(() => {
-    setHistory(prev => {
-      if (prev.length === 0) return prev;
-      const lastState = prev[prev.length - 1];
-      setPixels(JSON.parse(lastState));
-      const newHistory = prev.slice(0, -1);
-      setCanUndo(newHistory.length > 0);
-      return newHistory;
+    if (historyIndexRef.current <= 0) return;
+    historyIndexRef.current--;
+    restoreFromHistory(historyIndexRef.current);
+    setCanUndo(historyIndexRef.current > 0);
+    setCanRedo(true);
+  }, []);
+
+  const redo = useCallback(() => {
+    if (historyIndexRef.current >= historyRef.current.length - 1) return;
+    historyIndexRef.current++;
+    restoreFromHistory(historyIndexRef.current);
+    setCanUndo(true);
+    setCanRedo(historyIndexRef.current < historyRef.current.length - 1);
+  }, []);
+
+  const restoreFromHistory = (index) => {
+    const img = new Image();
+    img.onload = () => {
+      const ctx = ctxRef.current;
+      ctx.clearRect(0, 0, CONFIG.CANVAS_RESOLUTION, CONFIG.CANVAS_RESOLUTION);
+      ctx.drawImage(img, 0, 0);
+    };
+    img.src = historyRef.current[index];
+  };
+
+  // Çizim fonksiyonları
+  const getCanvasPos = (e) => {
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+
+    let clientX, clientY;
+    if (e.touches && e.touches.length > 0) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else {
+      clientX = e.clientX;
+      clientY = e.clientY;
+    }
+
+    return {
+      x: (clientX - rect.left) * scaleX,
+      y: (clientY - rect.top) * scaleY
+    };
+  };
+
+  // 🪣 Flood Fill (Doldur) fonksiyonu
+  const floodFill = useCallback((startX, startY, fillColor) => {
+    const canvas = canvasRef.current;
+    const ctx = ctxRef.current;
+    if (!canvas || !ctx) return;
+
+    const w = canvas.width, h = canvas.height;
+    const imageData = ctx.getImageData(0, 0, w, h);
+    const data = imageData.data;
+    const sx = Math.floor(startX), sy = Math.floor(startY);
+    if (sx < 0 || sx >= w || sy < 0 || sy >= h) return;
+
+    // Hedef pikselin rengini al
+    const targetIdx = (sy * w + sx) * 4;
+    const tR = data[targetIdx], tG = data[targetIdx + 1], tB = data[targetIdx + 2], tA = data[targetIdx + 3];
+
+    // fillColor'u parse et
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = 1; tempCanvas.height = 1;
+    const tmpCtx = tempCanvas.getContext('2d');
+    tmpCtx.fillStyle = fillColor;
+    tmpCtx.fillRect(0, 0, 1, 1);
+    const fc = tmpCtx.getImageData(0, 0, 1, 1).data;
+    const fR = fc[0], fG = fc[1], fB = fc[2], fA = fc[3];
+
+    // Aynı renge doldurmaya çalışma
+    if (tR === fR && tG === fG && tB === fB && tA === fA) return;
+
+    const tolerance = 32;
+    const match = (idx) => {
+      return Math.abs(data[idx] - tR) <= tolerance &&
+        Math.abs(data[idx + 1] - tG) <= tolerance &&
+        Math.abs(data[idx + 2] - tB) <= tolerance &&
+        Math.abs(data[idx + 3] - tA) <= tolerance;
+    };
+
+    const stack = [[sx, sy]];
+    const visited = new Uint8Array(w * h);
+
+    while (stack.length > 0) {
+      const [cx, cy] = stack.pop();
+      if (cx < 0 || cx >= w || cy < 0 || cy >= h) continue;
+      const vi = cy * w + cx;
+      if (visited[vi]) continue;
+      const idx = vi * 4;
+      if (!match(idx)) continue;
+
+      visited[vi] = 1;
+      data[idx] = fR; data[idx + 1] = fG; data[idx + 2] = fB; data[idx + 3] = fA;
+
+      stack.push([cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]);
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+    saveToHistory();
+    if (navigator.vibrate) navigator.vibrate(20);
+  }, [saveToHistory]);
+
+  // 🌟 Yıldız çizimi
+  const drawStar = (ctx, cx, cy, outerR, innerR, points) => {
+    ctx.beginPath();
+    for (let i = 0; i < points * 2; i++) {
+      const r = i % 2 === 0 ? outerR : innerR;
+      const a = (i * Math.PI) / points - Math.PI / 2;
+      const method = i === 0 ? 'moveTo' : 'lineTo';
+      ctx[method](cx + r * Math.cos(a), cy + r * Math.sin(a));
+    }
+    ctx.closePath();
+    ctx.fill();
+  };
+
+  const startDrawing = (e) => {
+    e.preventDefault();
+    const pos = getCanvasPos(e);
+    const ctx = ctxRef.current;
+
+    // Fill aracı — tıklama anında doldur
+    if (currentTool === 'fill') {
+      floodFill(pos.x, pos.y, selectedColor);
+      return;
+    }
+
+    isDrawingRef.current = true;
+    lastPosRef.current = pos;
+
+    if (currentTool === 'eraser') {
+      ctx.globalCompositeOperation = 'destination-out';
+    } else {
+      ctx.globalCompositeOperation = 'source-over';
+    }
+
+    if (currentTool === 'spray') {
+      // Sprey — rastgele noktalar
+      ctx.fillStyle = selectedColor;
+      for (let i = 0; i < 20; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = Math.random() * brushSize;
+        ctx.globalAlpha = 0.3 + Math.random() * 0.5;
+        ctx.beginPath();
+        ctx.arc(pos.x + Math.cos(angle) * dist, pos.y + Math.sin(angle) * dist, 1 + Math.random() * 1.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    } else if (currentTool === 'star') {
+      // Yıldız damgası
+      ctx.fillStyle = selectedColor;
+      drawStar(ctx, pos.x, pos.y, brushSize, brushSize * 0.4, 5);
+    } else if (currentTool === 'marker') {
+      // Marker — yarı şeffaf kalın çizgi
+      ctx.fillStyle = selectedColor;
+      ctx.globalAlpha = 0.5;
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, brushSize / 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    } else if (currentTool === 'calligraphy') {
+      // Kaligrafi — düz dikdörtgen
+      ctx.fillStyle = currentTool === 'eraser' ? 'rgba(0,0,0,1)' : selectedColor;
+      ctx.save();
+      ctx.translate(pos.x, pos.y);
+      ctx.rotate(-Math.PI / 4);
+      ctx.fillRect(-brushSize / 2, -2, brushSize, 4);
+      ctx.restore();
+    } else {
+      // Normal fırça veya silgi
+      ctx.fillStyle = currentTool === 'eraser' ? 'rgba(0,0,0,1)' : selectedColor;
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, brushSize / 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    if (navigator.vibrate) navigator.vibrate(3);
+  };
+
+  const draw = (e) => {
+    e.preventDefault();
+    if (!isDrawingRef.current) return;
+
+    const pos = getCanvasPos(e);
+    const ctx = ctxRef.current;
+
+    if (currentTool === 'eraser') {
+      ctx.globalCompositeOperation = 'destination-out';
+    } else {
+      ctx.globalCompositeOperation = 'source-over';
+    }
+
+    if (currentTool === 'spray') {
+      ctx.fillStyle = selectedColor;
+      for (let i = 0; i < 15; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = Math.random() * brushSize;
+        ctx.globalAlpha = 0.2 + Math.random() * 0.5;
+        ctx.beginPath();
+        ctx.arc(pos.x + Math.cos(angle) * dist, pos.y + Math.sin(angle) * dist, 1 + Math.random() * 1.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    } else if (currentTool === 'star') {
+      // Yıldız izleri
+      const dist = Math.hypot(pos.x - lastPosRef.current.x, pos.y - lastPosRef.current.y);
+      if (dist > brushSize * 1.5) {
+        ctx.fillStyle = selectedColor;
+        drawStar(ctx, pos.x, pos.y, brushSize, brushSize * 0.4, 5);
+        lastPosRef.current = pos;
+      }
+      return;
+    } else if (currentTool === 'marker') {
+      ctx.lineWidth = brushSize * 1.5;
+      ctx.globalAlpha = 0.4;
+      ctx.strokeStyle = selectedColor;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(lastPosRef.current.x, lastPosRef.current.y);
+      ctx.lineTo(pos.x, pos.y);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    } else if (currentTool === 'calligraphy') {
+      const dx = pos.x - lastPosRef.current.x;
+      const dy = pos.y - lastPosRef.current.y;
+      const angle = Math.atan2(dy, dx);
+      ctx.fillStyle = selectedColor;
+      ctx.save();
+      ctx.translate(pos.x, pos.y);
+      ctx.rotate(angle);
+      ctx.fillRect(-brushSize / 2, -2, brushSize, 4);
+      ctx.restore();
+    } else {
+      // Normal fırça / silgi
+      ctx.lineWidth = brushSize;
+      ctx.strokeStyle = currentTool === 'eraser' ? 'rgba(0,0,0,1)' : selectedColor;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(lastPosRef.current.x, lastPosRef.current.y);
+      ctx.lineTo(pos.x, pos.y);
+      ctx.stroke();
+    }
+
+    lastPosRef.current = pos;
+  };
+
+  const stopDrawing = (e) => {
+    if (e) e.preventDefault();
+    if (isDrawingRef.current) {
+      isDrawingRef.current = false;
+      lastPosRef.current = null;
+      ctxRef.current.globalCompositeOperation = 'source-over';
+      ctxRef.current.globalAlpha = 1;
+      saveToHistory();
+    }
+  };
+
+  // Canvas temizle
+  const clearCanvas = () => {
+    if (navigator.vibrate) navigator.vibrate([10, 30, 10]);
+    const ctx = ctxRef.current;
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.clearRect(0, 0, CONFIG.CANVAS_RESOLUTION, CONFIG.CANVAS_RESOLUTION);
+    saveToHistory();
+  };
+
+  // Çizimi gönder
+  const sendDrawing = () => {
+    if (!socketRef.current || sendState === 'sending') return;
+    if (navigator.vibrate) navigator.vibrate(40);
+
+    setSendState('sending');
+
+    const canvas = canvasRef.current;
+    // 📦 PNG — şeffaflık korunur (JPEG siyah yapıyordu!)
+    const dataUrl = canvas.toDataURL('image/png');
+
+    socketRef.current.emit('drawing-data', dataUrl);
+
+    // Başarı animasyonu
+    setTimeout(() => {
+      setSendState('success');
+      if (navigator.vibrate) navigator.vibrate([20, 50, 20]);
+
+      // Canvas'ı temizle
+      const ctx = ctxRef.current;
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.clearRect(0, 0, CONFIG.CANVAS_RESOLUTION, CONFIG.CANVAS_RESOLUTION);
+      historyRef.current = [];
+      historyIndexRef.current = -1;
+      saveToHistory();
+
+      setTimeout(() => setSendState('idle'), 2500);
+    }, 400);
+  };
+
+  // Renk seç
+  const selectColor = useCallback((color) => {
+    setSelectedColor(color);
+    setCurrentTool('brush');
+    if (navigator.vibrate) navigator.vibrate(10);
+    setRecentColors(prev => {
+      const filtered = prev.filter(c => c !== color);
+      return [color, ...filtered].slice(0, 8);
     });
   }, []);
 
-  const floodFill = useCallback((startIndex, newColor) => {
-    const currentPixels = [...pixels];
-    const targetTl = currentPixels[startIndex]?.tl;
-    const targetBr = currentPixels[startIndex]?.br;
-    if (drawMode === 'full' && targetTl === newColor) return null;
-    if (drawMode !== 'full' && targetTl === newColor && targetBr === newColor) return null;
-
-    const visited = new Set();
-    const stack = [startIndex];
-    while (stack.length > 0) {
-      const index = stack.pop();
-      if (visited.has(index)) continue;
-      const x = index % GRID_SIZE;
-      const y = Math.floor(index / GRID_SIZE);
-      if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) continue;
-      const pixel = currentPixels[index];
-      if (drawMode === 'full' ? pixel.tl !== targetTl : (pixel.tl !== targetTl || pixel.br !== targetBr)) continue;
-      visited.add(index);
-      currentPixels[index] = { tl: newColor, br: newColor };
-      if (x > 0) stack.push(index - 1);
-      if (x < GRID_SIZE - 1) stack.push(index + 1);
-      if (y > 0) stack.push(index - GRID_SIZE);
-      if (y < GRID_SIZE - 1) stack.push(index + GRID_SIZE);
-    }
-    return currentPixels;
-  }, [pixels, drawMode]);
-
-  const SYMMETRY_MODES = {
-    NONE: 'none',
-    HORIZONTAL: 'horizontal',
-    QUAD: 'quad',
-    RADIAL: 'radial',
-  };
-  const [symMode, setSymMode] = useState(SYMMETRY_MODES.QUAD);
-
-  const paint = (index, part = null) => {
-    if (navigator.vibrate) navigator.vibrate(5);
-
-    // Snapshot before change
-    saveToHistory(pixels);
-
-    setPixels(prev => {
-      let newPixels = [...prev];
-      const x = index % GRID_SIZE;
-      const y = Math.floor(index / GRID_SIZE);
-
-      const applyColor = (idx) => {
-        if (idx < 0 || idx >= newPixels.length) return;
-        const pixel = { ...newPixels[idx] };
-        if (currentTool === TOOLS.ERASER) {
-          pixel.tl = '#ffffff';
-          pixel.br = '#ffffff';
-        } else {
-          if (drawMode === 'full') {
-            pixel.tl = selectedColor;
-            pixel.br = selectedColor;
-          } else if (part) {
-            pixel[part] = selectedColor;
-          }
-        }
-        newPixels[idx] = pixel;
-      };
-
-      if (currentTool === TOOLS.FILL) {
-        newPixels = floodFill(index, selectedColor) || prev;
-      } else {
-        applyColor(index);
-
-        if (symMode !== SYMMETRY_MODES.NONE && drawMode === 'full') {
-          if (symMode === SYMMETRY_MODES.HORIZONTAL || symMode === SYMMETRY_MODES.QUAD || symMode === SYMMETRY_MODES.RADIAL) {
-            applyColor(y * GRID_SIZE + (GRID_SIZE - 1 - x));
-          }
-          if (symMode === SYMMETRY_MODES.QUAD || symMode === SYMMETRY_MODES.RADIAL) {
-            const y2 = GRID_SIZE - 1 - y;
-            applyColor(y2 * GRID_SIZE + x);
-            applyColor(y2 * GRID_SIZE + (GRID_SIZE - 1 - x));
-          }
-          if (symMode === SYMMETRY_MODES.RADIAL) {
-            applyColor(x * GRID_SIZE + y);
-            applyColor(x * GRID_SIZE + (GRID_SIZE - 1 - y));
-            applyColor((GRID_SIZE - 1 - x) * GRID_SIZE + y);
-            applyColor((GRID_SIZE - 1 - x) * GRID_SIZE + (GRID_SIZE - 1 - y));
-          }
-        }
-      }
-      return newPixels;
-    });
-  };
-
-  const clear = () => {
-    if (navigator.vibrate) navigator.vibrate([10, 30, 10]);
-    saveToHistory(pixels);
-    setPixels(Array(GRID_SIZE * GRID_SIZE).fill(null).map(createEmptyPixel));
-  };
-
-  const sendMotif = () => {
-    if (socketRef.current) {
-      if (navigator.vibrate) navigator.vibrate(40);
-      socketRef.current.emit('pixel-data', pixels);
-      setPixels(Array(GRID_SIZE * GRID_SIZE).fill(null).map(createEmptyPixel));
-      setHistory([]);
-      setCanUndo(false);
-    }
-  };
-
-  const loadMotif = (motifKey) => {
-    if (navigator.vibrate) navigator.vibrate([20, 10, 20]);
-    const newPixels = MOTIFS[motifKey].generate(selectedColor);
-    saveToHistory(pixels);
-    setPixels(newPixels);
-  };
-
-  const ToolButton = ({ icon, label, active, onClick, extraStyle = {} }) => (
-    <button onClick={onClick} style={{
-      width: '54px', height: '54px', borderRadius: '16px', border: active ? '1px solid rgba(255,255,255,0.3)' : '1px solid rgba(255,255,255,0.05)',
-      background: active ? THEME.accent : THEME.glass, color: 'white', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', transition: 'all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
-      transform: active ? 'scale(1.05) translateY(-2px)' : 'scale(1)', boxShadow: active ? THEME.shadow : 'none', backdropFilter: 'blur(10px)', ...extraStyle
-    }}>
-      <span style={{ fontSize: '20px' }}>{icon}</span>
-      <span style={{ fontSize: '9px', fontWeight: '500', marginTop: '2px', opacity: active ? 1 : 0.6 }}>{label}</span>
-    </button>
-  );
+  // ─────────────────────────────────────────────────────────────
+  // RENDER
+  // ─────────────────────────────────────────────────────────────
 
   return (
-    <div style={{
-      width: '100vw', minHeight: '100vh', background: THEME.bg, display: 'flex', flexDirection: 'column', alignItems: 'center', overflowY: 'auto', padding: '15px 0', boxSizing: 'border-box', fontFamily: 'Inter, sans-serif',
-      scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch'
+    <div className="client-page" style={{
+      width: '100vw',
+      minHeight: 'calc(var(--vh, 1vh) * 100)',
+      background: 'linear-gradient(160deg, #0f0c29 0%, #1a1040 40%, #24243e 100%)',
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      overflowY: 'auto', padding: '12px 0 24px', boxSizing: 'border-box',
+      fontFamily: "'Inter', -apple-system, sans-serif",
     }}>
-      {/* 🔝 ÜST PANEL: Başlık */}
-      <div style={{ width: '90%', maxWidth: '400px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+      <style>{GLOBAL_STYLES}</style>
+
+      {/* ═══════════════ BAŞLIK ═══════════════ */}
+      <div style={{
+        width: '92%', maxWidth: '420px',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        marginBottom: '14px', animation: 'fadeInUp 0.6s ease',
+      }}>
         <div>
-          <h1 style={{ color: 'white', margin: 0, fontSize: '18px', fontWeight: '700', letterSpacing: '-0.5px' }}>DOKUMA TEZGAHI</h1>
-          <p style={{ color: 'rgba(255,255,255,0.4)', margin: 0, fontSize: '11px' }}>v4.0 Profesyonel Versiyon</p>
+          <h1 style={{
+            margin: 0, fontSize: '20px', fontWeight: '900',
+            letterSpacing: '-0.5px',
+            background: 'linear-gradient(135deg, #ffd700 0%, #ff6b35 50%, #ffd700 100%)',
+            backgroundSize: '200% auto',
+            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+            animation: 'shimmer 3s linear infinite',
+          }}>🧶 DOKUMA TEZGAHı</h1>
+          <p style={{
+            color: 'rgba(255,255,255,0.35)', margin: '2px 0 0', fontSize: '10px',
+            letterSpacing: '2px', fontWeight: '500',
+          }}>KOLEKTİF SANAT ENSTALASYoNU</p>
         </div>
-        {/* İlerleme göstergesi kaldırıldı */}
-      </div>
-
-
-
-      {/* 🛠️ ARAÇ ÇUBUĞU (Yüzen Ada) */}
-      <div style={{ display: 'flex', gap: '8px', padding: '10px', background: 'rgba(255,255,255,0.03)', borderRadius: '24px', border: THEME.glassBorder, backdropFilter: 'blur(20px)', marginBottom: '20px', boxShadow: THEME.shadow }}>
-        <ToolButton icon="✏️" label="Kalem" active={currentTool === TOOLS.PENCIL} onClick={() => setCurrentTool(TOOLS.PENCIL)} />
-        <ToolButton icon="🧼" label="Silgi" active={currentTool === TOOLS.ERASER} onClick={() => setCurrentTool(TOOLS.ERASER)} />
-        <ToolButton icon="🪣" label="Kova" active={currentTool === TOOLS.FILL} onClick={() => setCurrentTool(TOOLS.FILL)} />
-
-        <div style={{ width: '1px', background: 'rgba(255,255,255,0.1)', margin: '5px 2px' }} />
-
-
-        <div style={{ width: '1px', background: 'rgba(255,255,255,0.1)', margin: '5px 2px' }} />
-
-        {/* 🦋 SİMETRİ MODLARI (Ayrı Butonlar) */}
-        <ToolButton
-          icon="DÜZ"
-          label="Simetri Yok"
-          active={symMode === SYMMETRY_MODES.NONE}
-          onClick={() => { setSymMode(SYMMETRY_MODES.NONE); if (navigator.vibrate) navigator.vibrate(10); }}
-          extraStyle={{ fontSize: '12px', fontWeight: 'bold' }}
-        />
-        <ToolButton
-          icon="🌓"
-          label="2-Ayna"
-          active={symMode === SYMMETRY_MODES.HORIZONTAL}
-          onClick={() => { setSymMode(SYMMETRY_MODES.HORIZONTAL); if (navigator.vibrate) navigator.vibrate(10); }}
-        />
-        <ToolButton
-          icon="🍀"
-          label="4-Ayna"
-          active={symMode === SYMMETRY_MODES.QUAD}
-          onClick={() => { setSymMode(SYMMETRY_MODES.QUAD); if (navigator.vibrate) navigator.vibrate(10); }}
-        />
-        <ToolButton
-          icon="☸️"
-          label="Radyal"
-          active={symMode === SYMMETRY_MODES.RADIAL}
-          onClick={() => { setSymMode(SYMMETRY_MODES.RADIAL); if (navigator.vibrate) navigator.vibrate(10); }}
-        />
-
-        <div style={{ width: '1px', background: 'rgba(255,255,255,0.1)', margin: '5px 2px' }} />
-
-        <ToolButton icon={drawMode === 'full' ? '⬛' : '🔺'} label={drawMode === 'full' ? 'Kare' : 'Üçgen'} active={drawMode !== 'full'} onClick={() => setDrawMode(drawMode === 'full' ? 'triangle' : 'full')} />
-        <ToolButton icon="↩️" label="Geri" active={false} onClick={undo} extraStyle={{ opacity: canUndo ? 1 : 0.3 }} />
-      </div>
-
-      {/* 🖼️ ÇİZİM ALANI (Glass Box) */}
-      <div style={{ background: 'rgba(0,0,0,0.2)', padding: '12px', borderRadius: '24px', border: THEME.glassBorder, boxShadow: 'inset 0 0 20px rgba(0,0,0,0.5)', marginBottom: '20px', position: 'relative' }}>
         <div style={{
-          display: 'grid', gridTemplateColumns: `repeat(${GRID_SIZE}, 1fr)`, width: '85vw', maxWidth: '380px', aspectRatio: '1/1',
-          background: '#fff', borderRadius: '12px', overflow: 'hidden', position: 'relative',
-          boxShadow: '0 0 40px rgba(0,0,0,0.3)'
+          display: 'flex', alignItems: 'center', gap: '8px',
+          background: connected ? 'rgba(46,204,113,0.1)' : 'rgba(231,76,60,0.1)',
+          border: connected ? '1px solid rgba(46,204,113,0.3)' : '1px solid rgba(231,76,60,0.3)',
+          borderRadius: '20px', padding: '6px 14px',
+          transition: 'all 0.4s ease',
         }}>
-          {/* 🔍 TEXTURE OVERLAY (Wool/Canvas effect) */}
           <div style={{
-            position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 10,
-            opacity: 0.15, background: `url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPgo8cmVjdCB3aWR0aD0iMSIgaGVpZ2h0PSIxIiBmaWxsPSIjMDAwIiBvcGFjaXR5PSIuNSIvPgo8L3N2Zz4=')`,
-            mixBlendMode: 'multiply'
+            width: 8, height: 8, borderRadius: '50%',
+            background: connected ? '#2ecc71' : '#e74c3c',
+            boxShadow: connected ? '0 0 8px #2ecc71' : '0 0 8px #e74c3c',
+            animation: connected ? 'pulse 2s ease infinite' : 'none',
           }} />
-
-          {pixels.map((p, i) => (
-            <div key={i} style={{
-              position: 'relative',
-              border: showGrid ? `0.5px solid rgba(0,0,0,${gridOpacity})` : 'none',
-              filter: 'contrast(1.1) brightness(0.95)'
-            }} onPointerDown={() => paint(i)} onPointerEnter={(e) => e.buttons === 1 && paint(i)}>
-              {drawMode === 'full' ? (
-                <div style={{
-                  width: '100%', height: '100%', background: p.tl,
-                  backgroundImage: 'linear-gradient(45deg, rgba(255,255,255,0.1) 25%, transparent 25%, transparent 50%, rgba(255,255,255,0.1) 50%, rgba(255,255,255,0.1) 75%, transparent 75%, transparent)',
-                  backgroundSize: '4px 4px'
-                }} />
-              ) : (
-                <>
-                  <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', background: p.tl, clipPath: 'polygon(0 0, 100% 0, 0 100%)' }} />
-                  <div style={{ position: 'absolute', bottom: 0, right: 0, width: '100%', height: '100%', background: p.br, clipPath: 'polygon(100% 0, 100% 100%, 0 100%)' }} />
-                </>
-              )}
-            </div>
-          ))}
+          <span style={{
+            fontSize: '10px', fontWeight: '600',
+            color: connected ? '#2ecc71' : '#e74c3c',
+            letterSpacing: '0.5px',
+          }}>{connected ? 'BAĞLI' : 'BAĞLANIYOR'}</span>
         </div>
       </div>
 
-      {/* 🏺 HAZIR MOTİFLER (Scrollable Bar) */}
-      <div style={{ width: '100%', maxWidth: '400px', padding: '0 20px', boxSizing: 'border-box', marginBottom: '10px' }}>
-        <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', fontWeight: 'bold', marginBottom: '8px', letterSpacing: '1px' }}>HAZIR MOTİFLER</div>
-        <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '5px', scrollbarWidth: 'none' }}>
-          {Object.keys(MOTIFS).map(key => (
-            <button key={key} onClick={() => loadMotif(key)} style={{
-              flexShrink: 0, padding: '8px 12px', borderRadius: '12px', background: THEME.glass, border: THEME.glassBorder,
-              color: 'white', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', transition: 'all 0.2s'
-            }}>
-              <span style={{ fontSize: '16px' }}>{MOTIFS[key].icon}</span>
-              <span style={{ fontSize: '11px', fontWeight: '600' }}>{MOTIFS[key].name}</span>
-            </button>
-          ))}
+      {/* ═══════════════ ARAÇ ÇUBUĞU ═══════════════ */}
+      <div style={{
+        width: '92%', maxWidth: '420px',
+        display: 'flex', alignItems: 'center', gap: '4px',
+        padding: '8px 8px',
+        flexWrap: 'wrap', justifyContent: 'center',
+        background: 'rgba(255,255,255,0.03)',
+        borderRadius: '20px',
+        border: '1px solid rgba(255,255,255,0.06)',
+        backdropFilter: 'blur(20px)',
+        marginBottom: '12px',
+        animation: 'fadeInUp 0.7s ease',
+      }}>
+        {/* Araç butonları */}
+        {[
+          { id: 'brush', icon: '🖌️', label: 'Fırça' },
+          { id: 'marker', icon: '🖍️', label: 'Marker' },
+          { id: 'spray', icon: '💨', label: 'Sprey' },
+          { id: 'star', icon: '⭐', label: 'Yıldız' },
+          { id: 'calligraphy', icon: '✒️', label: 'Kalem' },
+          { id: 'fill', icon: '🪣', label: 'Doldur' },
+          { id: 'eraser', icon: '🧹', label: 'Silgi' },
+        ].map(tool => (
+          <button key={tool.id} onClick={() => setCurrentTool(tool.id)} style={{
+            width: '40px', height: '44px', borderRadius: '12px',
+            border: currentTool === tool.id ? '1px solid rgba(255,255,255,0.25)' : '1px solid transparent',
+            background: currentTool === tool.id
+              ? 'linear-gradient(135deg, rgba(102,126,234,0.5), rgba(118,75,162,0.5))'
+              : 'rgba(255,255,255,0.04)',
+            color: 'white', cursor: 'pointer',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            transition: 'all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+            transform: currentTool === tool.id ? 'scale(1.08)' : 'scale(1)',
+            boxShadow: currentTool === tool.id ? '0 4px 15px rgba(102,126,234,0.3)' : 'none',
+            padding: '2px',
+          }}>
+            <span style={{ fontSize: '16px' }}>{tool.icon}</span>
+            <span style={{ fontSize: '7px', fontWeight: '600', marginTop: '1px', opacity: 0.7 }}>{tool.label}</span>
+          </button>
+        ))}
+
+        {/* Ayırıcı */}
+        <div style={{ width: '1px', height: '32px', background: 'rgba(255,255,255,0.08)', margin: '0 2px' }} />
+
+        {/* Undo/Redo */}
+        {[
+          { icon: '↩️', label: 'Geri', action: undo, enabled: canUndo },
+          { icon: '↪️', label: 'İleri', action: redo, enabled: canRedo },
+        ].map((btn, i) => (
+          <button key={i} onClick={btn.action} style={{
+            width: '44px', height: '44px', borderRadius: '12px',
+            border: '1px solid transparent',
+            background: 'rgba(255,255,255,0.04)',
+            color: 'white', cursor: btn.enabled ? 'pointer' : 'default',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            opacity: btn.enabled ? 1 : 0.25,
+            transition: 'all 0.2s',
+          }}>
+            <span style={{ fontSize: '16px' }}>{btn.icon}</span>
+            <span style={{ fontSize: '8px', fontWeight: '600', marginTop: '1px', opacity: 0.6 }}>{btn.label}</span>
+          </button>
+        ))}
+
+        {/* Spacer */}
+        <div style={{ flex: 1 }} />
+
+        {/* Fırça boyutu göstergesi */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '8px',
+          background: 'rgba(255,255,255,0.05)', borderRadius: '12px',
+          padding: '6px 10px',
+        }}>
+          <div style={{
+            width: Math.max(brushSize * 0.8, 6), height: Math.max(brushSize * 0.8, 6),
+            borderRadius: '50%',
+            background: currentTool === 'eraser' ? 'rgba(255,255,255,0.4)' : selectedColor,
+            border: '1px solid rgba(255,255,255,0.3)',
+            transition: 'all 0.3s',
+          }} />
+          <span style={{ fontSize: '11px', fontWeight: '700', color: 'rgba(255,255,255,0.6)' }}>
+            {brushSize}
+          </span>
         </div>
       </div>
 
-      {/* 🎨 RENK PALETİ (Responsive Grid/Scroll) */}
-      <div style={{ width: '90%', maxWidth: '400px', display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '20px' }}>
+      {/* ═══════════════ ÇİZİM ALANI ═══════════════ */}
+      <div style={{
+        position: 'relative',
+        padding: '10px',
+        borderRadius: '20px',
+        background: 'linear-gradient(135deg, rgba(212,175,55,0.15), rgba(139,69,19,0.15))',
+        border: '2px solid rgba(212,175,55,0.2)',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.4), inset 0 0 30px rgba(212,175,55,0.05)',
+        marginBottom: '12px',
+        animation: 'fadeInUp 0.8s ease',
+      }}>
+        {/* Dekoratif köşeler */}
+        {[[16, 16], [16, 'auto'], ['auto', 16], ['auto', 'auto']].map(([t, l], i) => (
+          <div key={i} style={{
+            position: 'absolute',
+            top: typeof t === 'number' ? t : 'auto',
+            bottom: t === 'auto' ? 16 : 'auto',
+            left: typeof l === 'number' ? l : 'auto',
+            right: l === 'auto' ? 16 : 'auto',
+            width: '20px', height: '20px',
+            borderTop: i < 2 ? '2px solid rgba(212,175,55,0.4)' : 'none',
+            borderBottom: i >= 2 ? '2px solid rgba(212,175,55,0.4)' : 'none',
+            borderLeft: (i % 2 === 0) ? '2px solid rgba(212,175,55,0.4)' : 'none',
+            borderRight: (i % 2 !== 0) ? '2px solid rgba(212,175,55,0.4)' : 'none',
+            pointerEvents: 'none',
+          }} />
+        ))}
 
-        {/* 🕒 SON KULLANILANLAR */}
-        {recentColors.length > 0 && (
-          <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              {recentColors.map((color, idx) => (
-                <div key={`${color}-${idx}`} onClick={() => { setSelectedColor(color); setCurrentTool(TOOLS.PENCIL); }} style={{
-                  width: '26px', height: '26px', borderRadius: '50%', background: color, border: selectedColor === color ? '2px solid white' : '1px solid rgba(255,255,255,0.2)',
-                  cursor: 'pointer', flexShrink: 0
+        <canvas
+          ref={canvasRef}
+          style={{
+            width: '84vw', maxWidth: '380px', aspectRatio: '1/1',
+            borderRadius: '10px', touchAction: 'none',
+            cursor: currentTool === 'eraser' ? 'crosshair' : 'default',
+            background: 'repeating-conic-gradient(#f0f0f0 0% 25%, #fff 0% 50%) 50%/18px 18px',
+            display: 'block',
+          }}
+          onPointerDown={startDrawing}
+          onPointerMove={draw}
+          onPointerUp={stopDrawing}
+          onPointerLeave={stopDrawing}
+          onTouchStart={startDrawing}
+          onTouchMove={draw}
+          onTouchEnd={stopDrawing}
+        />
+
+        {/* Gönderim başarı overlay */}
+        {sendState === 'success' && (
+          <div style={{
+            position: 'absolute', inset: 10, borderRadius: '10px',
+            background: 'rgba(46,204,113,0.15)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            animation: 'bounceIn 0.5s ease',
+            pointerEvents: 'none',
+          }}>
+            <div style={{ textAlign: 'center' }}>
+              <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#2ecc71" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" opacity="0.3" />
+                <path d="M8 12l3 3 5-6" style={{
+                  strokeDasharray: 24,
+                  animation: 'checkDraw 0.6s ease 0.2s forwards',
+                  strokeDashoffset: 24,
                 }} />
-              ))}
+              </svg>
+              <p style={{
+                color: '#2ecc71', fontSize: '13px', fontWeight: '800',
+                margin: '8px 0 0', letterSpacing: '1px',
+              }}>DOKULDU! ✨</p>
             </div>
           </div>
         )}
+      </div>
 
-        <div style={{
-          display: 'flex', gap: '8px', flexWrap: 'wrap',
-          justifyContent: 'center'
-        }}>
-          {PALETTE.map(color => (
-            <div key={color} onClick={() => {
-              setSelectedColor(color);
-              setCurrentTool(TOOLS.PENCIL);
-              if (navigator.vibrate) navigator.vibrate(10);
-              setRecentColors(prev => {
-                const filtered = prev.filter(c => c !== color);
-                return [color, ...filtered].slice(0, 8);
-              });
-            }} style={{
-              width: '32px', height: '32px', borderRadius: '10px', background: color, border: selectedColor === color ? '3px solid white' : '2px solid rgba(255,255,255,0.1)',
-              boxShadow: selectedColor === color ? `0 0 12px ${color}` : 'none',
-              transform: selectedColor === color ? 'scale(1.1)' : 'scale(1)',
-              transition: 'all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275)', cursor: 'pointer'
-            }} />
-          ))}
+      {/* ═══════════════ FIRÇA BOYUTU ═══════════════ */}
+      <div style={{
+        width: '92%', maxWidth: '420px',
+        display: 'flex', alignItems: 'center', gap: '10px',
+        padding: '8px 14px',
+        background: 'rgba(255,255,255,0.03)',
+        borderRadius: '14px',
+        border: '1px solid rgba(255,255,255,0.05)',
+        marginBottom: '10px',
+        animation: 'fadeInUp 0.9s ease',
+      }}>
+        <span style={{
+          fontSize: '10px', color: 'rgba(255,255,255,0.4)',
+          fontWeight: '700', letterSpacing: '1px', minWidth: '40px',
+        }}>FIRÇA</span>
+        <div style={{ display: 'flex', gap: '6px', flex: 1, justifyContent: 'center' }}>
+          {BRUSH_SIZES.map(size => {
+            const isActive = brushSize === size;
+            return (
+              <button key={size} onClick={() => setBrushSize(size)} style={{
+                width: Math.max(size * 1.4, 28), height: Math.max(size * 1.4, 28),
+                borderRadius: '50%',
+                background: isActive
+                  ? (currentTool === 'eraser'
+                    ? 'rgba(255,255,255,0.2)'
+                    : `radial-gradient(circle, ${selectedColor}, ${selectedColor}88)`)
+                  : 'rgba(255,255,255,0.06)',
+                border: isActive ? '2px solid rgba(255,255,255,0.7)' : '1px solid rgba(255,255,255,0.1)',
+                cursor: 'pointer',
+                transition: 'all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+                transform: isActive ? 'scale(1.15)' : 'scale(1)',
+                boxShadow: isActive ? `0 0 12px ${selectedColor}40` : 'none',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <div style={{
+                  width: Math.max(size * 0.5, 4), height: Math.max(size * 0.5, 4),
+                  borderRadius: '50%',
+                  background: isActive ? 'white' : 'rgba(255,255,255,0.3)',
+                  transition: 'all 0.2s',
+                }} />
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {/* 📏 GRID CONTROL */}
-      <div style={{ width: '90%', maxWidth: '400px', display: 'flex', alignItems: 'center', gap: '15px', padding: '10px 15px', background: 'rgba(255,255,255,0.03)', borderRadius: '16px', marginBottom: '15px' }}>
-        <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', fontWeight: '600' }}>GRID:</span>
-        <input type="range" min="0" max="0.5" step="0.05" value={gridOpacity} onChange={(e) => setGridOpacity(parseFloat(e.target.value))} style={{ flex: 1, accentColor: '#ffd700' }} />
-        <button onClick={() => setShowGrid(!showGrid)} style={{ background: 'none', border: 'none', color: showGrid ? '#ffd700' : 'rgba(255,255,255,0.2)', cursor: 'pointer', fontSize: '18px' }}>{showGrid ? '🔔' : '🔕'}</button>
+      {/* ═══════════════ RENK PALETİ ═══════════════ */}
+      <div style={{
+        width: '92%', maxWidth: '420px',
+        marginBottom: '14px',
+        animation: 'fadeInUp 1.0s ease',
+      }}>
+        {/* Son kullanılanlar */}
+        {recentColors.length > 0 && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '6px',
+            marginBottom: '10px', padding: '6px 8px',
+            background: 'rgba(255,255,255,0.02)', borderRadius: '12px',
+          }}>
+            <span style={{
+              fontSize: '9px', color: 'rgba(255,255,255,0.3)',
+              fontWeight: '600', letterSpacing: '1px', marginRight: '4px',
+            }}>SON</span>
+            {recentColors.map((color, idx) => (
+              <div key={`${color}-${idx}`}
+                onClick={() => selectColor(color)}
+                style={{
+                  width: '24px', height: '24px', borderRadius: '8px', flexShrink: 0,
+                  background: color, cursor: 'pointer',
+                  border: selectedColor === color ? '2px solid white' : '1px solid rgba(255,255,255,0.15)',
+                  boxShadow: selectedColor === color ? `0 0 8px ${color}` : 'none',
+                  transition: 'all 0.2s',
+                }} />
+            ))}
+          </div>
+        )}
+
+        {/* Kategori tabları */}
+        <div style={{
+          display: 'flex', gap: '4px', marginBottom: '10px',
+          overflowX: 'auto', paddingBottom: '2px',
+        }} className="color-row">
+          {PALETTE_CATEGORIES.map((cat, i) => (
+            <button key={cat.name} onClick={() => setActiveCat(i)} style={{
+              padding: '6px 12px', borderRadius: '10px', cursor: 'pointer',
+              border: activeCat === i ? '1px solid rgba(255,255,255,0.2)' : '1px solid transparent',
+              background: activeCat === i
+                ? 'rgba(255,255,255,0.1)'
+                : 'rgba(255,255,255,0.02)',
+              color: activeCat === i ? 'white' : 'rgba(255,255,255,0.4)',
+              fontSize: '11px', fontWeight: '600', fontFamily: 'inherit',
+              whiteSpace: 'nowrap', transition: 'all 0.25s',
+              display: 'flex', alignItems: 'center', gap: '4px',
+            }}>
+              <span>{cat.emoji}</span> {cat.name}
+            </button>
+          ))}
+        </div>
+
+        {/* Aktif kategorinin renkleri */}
+        <div style={{
+          display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center',
+          padding: '8px',
+          background: 'rgba(255,255,255,0.02)',
+          borderRadius: '16px',
+          border: '1px solid rgba(255,255,255,0.04)',
+        }}>
+          {PALETTE_CATEGORIES[activeCat]?.colors.map((color, ci) => {
+            const isSelected = selectedColor === color;
+            return (
+              <div key={color}
+                onClick={() => selectColor(color)}
+                style={{
+                  width: '36px', height: '36px', borderRadius: '12px',
+                  background: color, cursor: 'pointer',
+                  border: isSelected ? '3px solid white' : '2px solid rgba(255,255,255,0.08)',
+                  boxShadow: isSelected ? `0 0 16px ${color}, 0 4px 12px rgba(0,0,0,0.3)` : '0 2px 6px rgba(0,0,0,0.2)',
+                  transform: isSelected ? 'scale(1.15) translateY(-2px)' : 'scale(1)',
+                  transition: 'all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+                  animation: isSelected ? 'gentleFloat 2s ease infinite' : 'none',
+                }} />
+            );
+          })}
+        </div>
       </div>
 
-      {/* 📱 ALT AKSİYONLAR */}
-      <div style={{ marginTop: 'auto', width: '90%', maxWidth: '400px', display: 'flex', gap: '10px', paddingBottom: '10px' }}>
-        <button onClick={clear} style={{ flex: 1, padding: '14px', borderRadius: '16px', border: '1px solid rgba(231, 76, 60, 0.3)', background: 'rgba(231, 76, 60, 0.1)', color: '#e74c3c', fontWeight: '700', fontSize: '13px', cursor: 'pointer', transition: 'all 0.2s' }}>TEMİZLE</button>
-        <button id="send-trigger-btn" onClick={sendMotif} style={{ flex: 2, padding: '14px', borderRadius: '16px', border: 'none', background: THEME.accentGold, color: '#000', fontWeight: '800', fontSize: '15px', cursor: 'pointer', boxShadow: '0 8px 20px rgba(212, 175, 55, 0.3)', letterSpacing: '0.5px' }}>MOTİFİ GÖNDER 🚀</button>
+      {/* ═══════════════ ALT AKSİYONLAR ═══════════════ */}
+      <div style={{
+        marginTop: 'auto', width: '92%', maxWidth: '420px',
+        display: 'flex', gap: '10px',
+        padding: '0 0 env(safe-area-inset-bottom, 10px)',
+        animation: 'fadeInUp 1.1s ease',
+      }}>
+        {/* Temizle */}
+        <button onClick={clearCanvas} style={{
+          flex: 1, padding: '16px', borderRadius: '16px',
+          border: '1px solid rgba(255,59,48,0.2)',
+          background: 'rgba(255,59,48,0.06)',
+          color: '#ff6b6b', fontWeight: '700', fontSize: '13px',
+          fontFamily: 'inherit', cursor: 'pointer',
+          transition: 'all 0.3s',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+        }}>
+          <span style={{ fontSize: '16px' }}>🗑️</span> TEMİZLE
+        </button>
+
+        {/* Gönder */}
+        <button
+          id="send-trigger-btn"
+          onClick={sendDrawing}
+          disabled={sendState === 'sending'}
+          style={{
+            flex: 2.5, padding: '16px 20px', borderRadius: '16px',
+            border: 'none',
+            background: sendState === 'success'
+              ? 'linear-gradient(135deg, #2ecc71, #27ae60)'
+              : sendState === 'sending'
+                ? 'linear-gradient(135deg, #95a5a6, #7f8c8d)'
+                : 'linear-gradient(135deg, #ffd700 0%, #ff8c00 50%, #ffd700 100%)',
+            backgroundSize: sendState === 'idle' ? '200% auto' : '100% auto',
+            animation: sendState === 'idle'
+              ? 'shimmer 2.5s linear infinite'
+              : sendState === 'success'
+                ? 'successPop 0.6s ease'
+                : 'none',
+            color: sendState === 'success' ? '#fff' : '#1a0a00',
+            fontWeight: '900', fontSize: '15px', fontFamily: 'inherit',
+            cursor: sendState === 'sending' ? 'wait' : 'pointer',
+            boxShadow: sendState === 'success'
+              ? '0 6px 25px rgba(46,204,113,0.4)'
+              : '0 6px 25px rgba(255,215,0,0.3)',
+            letterSpacing: '0.5px',
+            transition: 'background 0.4s, box-shadow 0.4s, color 0.4s',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+          }}>
+          {sendState === 'success' ? (
+            <>✈️ HALIYA UÇUYOR!</>
+          ) : sendState === 'sending' ? (
+            <>⏳ GÖNDERİLİYOR...</>
+          ) : (
+            <>🧶 ÇİZİMİ DOKULA</>
+          )}
+        </button>
       </div>
     </div>
   );

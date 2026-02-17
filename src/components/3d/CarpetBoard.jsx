@@ -1,416 +1,604 @@
-import React, { useRef, useMemo, useEffect, useState } from 'react';
-import { useFrame, useThree } from '@react-three/fiber';
+import React, { useRef, useMemo, useEffect, useState, useCallback } from 'react';
+import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { CONFIG } from '../../constants';
-import {
-    SHARED_BOX_GEO,
-    WOOL_TEXTURE,
-    WOOL_NORMAL,
-    SHARED_TRI_TL_GEO,
-    SHARED_TRI_BR_GEO
-} from './materials';
 import FlyingPixelsInstances from './FlyingPixels';
-import { createWoolMaterial } from './shaders/WoolShader';
+import { audioManager } from '../../audio/AudioManager';
 
-// -----------------------------------------------------------------------------
-// HELPER FUNCTIONS
-// -----------------------------------------------------------------------------
+// =============================================================================
+// 🧶 YÜN FİBER DOKU ÜRETECİ
+// =============================================================================
 
-function getSlotBasePosition(index) {
-    const col = index % CONFIG.SLOT_COLS;
-    const row = Math.floor(index / CONFIG.SLOT_COLS);
+function createWoolNormalMap() {
+    const size = 512;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
 
-    const xPos = (col - CONFIG.SLOT_COLS / 2 + 0.5) * (CONFIG.PIXELS_PER_SLOT * CONFIG.NODE_SIZE + CONFIG.GAP);
-    const zPos = (row - CONFIG.SLOT_ROWS / 2 + 0.5) * (CONFIG.PIXELS_PER_SLOT * CONFIG.NODE_SIZE + CONFIG.GAP);
+    // Nötr normal map arka plan (mavi = düz yüzey)
+    ctx.fillStyle = '#8080ff';
+    ctx.fillRect(0, 0, size, size);
 
-    return { x: xPos, z: zPos };
+    // Yatay iplik lifleri
+    for (let y = 0; y < size; y += 3) {
+        const offset = Math.sin(y * 0.3) * 2;
+        ctx.strokeStyle = `rgba(${120 + Math.random() * 20}, ${120 + Math.random() * 20}, 255, ${0.3 + Math.random() * 0.3})`;
+        ctx.lineWidth = 1 + Math.random() * 1.5;
+        ctx.beginPath();
+        ctx.moveTo(0, y + offset);
+        for (let x = 0; x < size; x += 4) {
+            const waveY = y + offset + Math.sin(x * 0.15 + y * 0.1) * 1.5;
+            ctx.lineTo(x, waveY);
+        }
+        ctx.stroke();
+    }
+
+    // Dikey iplik lifleri (çapraz dokuma)
+    for (let x = 0; x < size; x += 4) {
+        const offset = Math.sin(x * 0.25) * 2;
+        ctx.strokeStyle = `rgba(${140 + Math.random() * 15}, ${120 + Math.random() * 15}, 255, ${0.2 + Math.random() * 0.2})`;
+        ctx.lineWidth = 0.8 + Math.random() * 1;
+        ctx.beginPath();
+        ctx.moveTo(x + offset, 0);
+        for (let y = 0; y < size; y += 4) {
+            const waveX = x + offset + Math.sin(y * 0.12 + x * 0.08) * 1.2;
+            ctx.lineTo(waveX, y);
+        }
+        ctx.stroke();
+    }
+
+    // Düğüm noktaları (knot bumps)
+    for (let i = 0; i < 800; i++) {
+        const kx = Math.random() * size;
+        const ky = Math.random() * size;
+        const kr = 1 + Math.random() * 2.5;
+        const gradient = ctx.createRadialGradient(kx, ky, 0, kx, ky, kr);
+        gradient.addColorStop(0, `rgba(${160 + Math.random() * 30}, ${160 + Math.random() * 30}, 255, 0.5)`);
+        gradient.addColorStop(1, 'rgba(128, 128, 255, 0)');
+        ctx.beginPath();
+        ctx.arc(kx, ky, kr, 0, Math.PI * 2);
+        ctx.fillStyle = gradient;
+        ctx.fill();
+    }
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(8, 13); // Halı boyutuna oranla tekrar
+    return texture;
 }
 
-// -----------------------------------------------------------------------------
-// CARPET SLOT COMPONENT (OPTIMIZED: INSTANCED MESH)
-// -----------------------------------------------------------------------------
+function createWoolBumpMap() {
+    const size = 256;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
 
-const CarpetSlot = React.memo(({ index, data, pos, isResetting, resetStartTime, woolMaterial }) => {
-    const groupRef = useRef();
-    const boxMeshRef = useRef();
-    const tlMeshRef = useRef();
-    const brMeshRef = useRef();
+    // Gri arka plan
+    ctx.fillStyle = '#808080';
+    ctx.fillRect(0, 0, size, size);
 
-    const id = index;
-    const pixels = data;
-    const position = [pos.x, 0, pos.z];
-
-    // Animasyon: Resetleme sırasında yukarı kalkma ve şeffaflaşma
-    useFrame(() => {
-        if (!groupRef.current || !isResetting) return;
-
-        const elapsed = (Date.now() - resetStartTime) / 1000;
-        const delay = id * 0.03;
-        const progress = Math.max(0, Math.min(1, (elapsed - delay) / 2));
-
-        if (progress > 0) {
-            groupRef.current.position.y = position[1] + progress * 20;
-            groupRef.current.scale.setScalar(1 - progress * 0.5);
-            // InstancedMesh opacity yönetimi zor olduğu için kaba bir scale/position animasyonu şimdilik yeterli
+    // İplik kabartma deseni
+    for (let y = 0; y < size; y += 2) {
+        for (let x = 0; x < size; x += 2) {
+            const n1 = Math.sin(x * 0.5) * Math.cos(y * 0.5) * 0.3;
+            const n2 = Math.sin(x * 0.15 + y * 0.12) * 0.2;
+            const n3 = (Math.random() - 0.5) * 0.15;
+            const val = 128 + (n1 + n2 + n3) * 128;
+            ctx.fillStyle = `rgb(${val},${val},${val})`;
+            ctx.fillRect(x, y, 2, 2);
         }
+    }
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(12, 20);
+    return texture;
+}
+
+// =============================================================================
+// 🧶 YÜN MATERYALİ - onBeforeCompile ile shader enjeksiyonu
+// =============================================================================
+
+function createCarpetMaterial(drawingTexture, normalMap, bumpMap) {
+    const mat = new THREE.MeshStandardMaterial({
+        map: drawingTexture,
+        normalMap: normalMap,
+        normalScale: new THREE.Vector2(0.4, 0.4),
+        bumpMap: bumpMap,
+        bumpScale: 0.015,
+        roughness: 0.75,
+        metalness: 0.02,
+        side: THREE.FrontSide,
     });
 
-    // Reset bittiğinde pozisyonu düzelt
-    useEffect(() => {
-        if (!isResetting && groupRef.current) {
-            groupRef.current.position.set(position[0], position[1], position[2]);
-            groupRef.current.scale.setScalar(1);
-        }
-    }, [isResetting, position]);
+    mat.onBeforeCompile = (shader) => {
+        shader.uniforms.uTime = { value: 0 };
 
-    // 🎨 INSTANCED MESH GÜNCELLEME
-    useEffect(() => {
-        if (!boxMeshRef.current || !tlMeshRef.current || !brMeshRef.current) return;
+        // Vertex shader: hafif yüzey bozulması (fiber displacement)
+        shader.vertexShader = `
+            uniform float uTime;
+            varying float vFiber;
+            varying vec2 vHighUv;
+        ` + shader.vertexShader;
 
-        let boxIdx = 0;
-        let tlIdx = 0;
-        let brIdx = 0;
+        shader.vertexShader = shader.vertexShader.replace(
+            '#include <begin_vertex>',
+            `
+            #include <begin_vertex>
+            
+            // Yüksek frekanslı UV (fiber detail)
+            vHighUv = uv * vec2(24.0, 40.0);
+            
+            // İplik fiber noise
+            float fiber = sin(uv.x * 200.0) * cos(uv.y * 200.0) * 0.5
+                        + sin(uv.x * 80.0 + uv.y * 60.0) * 0.3;
+            vFiber = fiber;
+            
+            // Hafif yüzey kabartması
+            vec3 dispNormal = normalize(normal);
+            transformed += dispNormal * fiber * 0.02;
+            `
+        );
 
-        const dummy = new THREE.Object3D();
-        const _color = new THREE.Color();
+        // Fragment shader: fiber detail ve renk varyasyonu
+        shader.fragmentShader = `
+            varying float vFiber;
+            varying vec2 vHighUv;
+        ` + shader.fragmentShader;
 
-        pixels.forEach((data, i) => {
-            const xRel = i % CONFIG.PIXELS_PER_SLOT;
-            const zRel = Math.floor(i / CONFIG.PIXELS_PER_SLOT);
+        shader.fragmentShader = shader.fragmentShader.replace(
+            '#include <dithering_fragment>',
+            `
+            #include <dithering_fragment>
+            
+            // 🧶 Yün fiber detayı
+            float fiberDetail = sin(vHighUv.x * 25.0) * cos(vHighUv.y * 25.0) * 0.05;
+            float fiberCross = sin(vHighUv.x * 12.5 + vHighUv.y * 12.5) * 0.025;
+            
+            // Renk varyasyonu (her iplik hafif farklı ton)
+            float colorVar = sin(vHighUv.x * 50.0) * sin(vHighUv.y * 50.0) * 0.03;
+            
+            gl_FragColor.rgb += fiberDetail + fiberCross;
+            gl_FragColor.rgb *= (1.0 + colorVar);
+            
+            // 🎨 RENK CANLANDIRMA - Satürasyon artışı
+            float luminance = dot(gl_FragColor.rgb, vec3(0.299, 0.587, 0.114));
+            vec3 saturated = mix(vec3(luminance), gl_FragColor.rgb, 1.8);
+            gl_FragColor.rgb = saturated * 1.25;
+            
+            // Rim ışık (kenar parlaması - yün tüylerini simüle eder)
+            float rim = 1.0 - max(dot(normalize(vViewPosition), normalize(vNormal)), 0.0);
+            gl_FragColor.rgb += vec3(0.06) * pow(rim, 3.0);
+            `
+        );
 
-            // Düğüm Pozisyonu
-            const x = (xRel - CONFIG.PIXELS_PER_SLOT / 2) * CONFIG.NODE_SIZE;
-            const z = (zRel - CONFIG.PIXELS_PER_SLOT / 2) * CONFIG.NODE_SIZE;
+        // Mat referansını sakla (uTime güncelleme için)
+        mat.userData.shader = shader;
+    };
 
-            // Rastgelelik (Deterministik olması için i'ye bağlı olabilir veya sabit seed)
-            const rotY = (Math.random() - 0.5) * 0.15;
-            const rotX = (Math.random() - 0.5) * 0.05;
-            const offX = (Math.random() - 0.5) * 0.005;
-            const offZ = (Math.random() - 0.5) * 0.005;
-            const scaleY = 0.9 + Math.random() * 0.2;
+    return mat;
+}
 
-            dummy.position.set(x + offX, 0, z + offZ);
-            dummy.rotation.set(rotX, rotY, 0);
-            dummy.scale.set(1, scaleY, 1);
-            dummy.updateMatrix();
+// =============================================================================
+// CARPET BOARD - TEXTURE-BASED FREE DRAWING RENDER
+// =============================================================================
 
-            if (typeof data === 'object' && data !== null && data.tl !== data.br) {
-                // Split Knot (Üçgenler)
+function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
+    const meshRef = useRef();
+    const offscreenCanvasRef = useRef(null);
+    const offscreenCtxRef = useRef(null);
+    const textureRef = useRef(null);
+    const materialRef = useRef(null);
+    const needsUpdateRef = useRef(false);
 
-                // TL Üçgen
-                tlMeshRef.current.setMatrixAt(tlIdx, dummy.matrix);
-                _color.set(data.tl);
-                tlMeshRef.current.setColorAt(tlIdx, _color);
-                tlIdx++;
-
-                // BR Üçgen
-                brMeshRef.current.setMatrixAt(brIdx, dummy.matrix);
-                _color.set(data.br);
-                brMeshRef.current.setColorAt(brIdx, _color);
-                brIdx++;
-
-            } else {
-                // Solid Knot (Kutu)
-                const colorHex = (typeof data === 'object' && data !== null) ? data.tl : data;
-
-                boxMeshRef.current.setMatrixAt(boxIdx, dummy.matrix);
-                _color.set(colorHex);
-                boxMeshRef.current.setColorAt(boxIdx, _color);
-                boxIdx++;
-            }
-        });
-
-        // Kullanılmayan instance'ları sıfırla/gizle (Count'u güncellemek yeterli)
-        boxMeshRef.current.count = boxIdx;
-        tlMeshRef.current.count = tlIdx;
-        brMeshRef.current.count = brIdx;
-
-        boxMeshRef.current.instanceMatrix.needsUpdate = true;
-        if (boxMeshRef.current.instanceColor) boxMeshRef.current.instanceColor.needsUpdate = true;
-
-        tlMeshRef.current.instanceMatrix.needsUpdate = true;
-        if (tlMeshRef.current.instanceColor) tlMeshRef.current.instanceColor.needsUpdate = true;
-
-        brMeshRef.current.instanceMatrix.needsUpdate = true;
-        if (brMeshRef.current.instanceColor) brMeshRef.current.instanceColor.needsUpdate = true;
-
-    }, [pixels]);
-
-    return (
-        <group ref={groupRef} position={position}>
-            {/* Solid Box Knots */}
-            <instancedMesh ref={boxMeshRef} args={[SHARED_BOX_GEO, undefined, 256]} frustumCulled={false}>
-                <primitive object={woolMaterial} attach="material" />
-            </instancedMesh>
-
-            {/* Top-Left Triangle Knots */}
-            <instancedMesh ref={tlMeshRef} args={[SHARED_TRI_TL_GEO, undefined, 256]} frustumCulled={false}>
-                <primitive object={woolMaterial} attach="material" />
-            </instancedMesh>
-
-            {/* Bottom-Right Triangle Knots */}
-            <instancedMesh ref={brMeshRef} args={[SHARED_TRI_BR_GEO, undefined, 256]} frustumCulled={false}>
-                <primitive object={woolMaterial} attach="material" rotation={[0, Math.PI, 0]} />
-            </instancedMesh>
-
-            {/* Slot Base */}
-            <mesh position={[0, -0.02, 0]} receiveShadow>
-                <boxGeometry args={[CONFIG.PIXELS_PER_SLOT * CONFIG.NODE_SIZE, 0.02, CONFIG.PIXELS_PER_SLOT * CONFIG.NODE_SIZE]} />
-                <meshStandardMaterial color="#9c8d76" roughness={1.0} />
-            </mesh>
-        </group>
-    );
-});
-
-// -----------------------------------------------------------------------------
-// MAIN CARPET BOARD COMPONENT
-// -----------------------------------------------------------------------------
-
-const CarpetBoard = ({ socket: propSocket, playLandSound, onFinalShow, carpetWidth, carpetDepth, carpetWidthReal, children }) => {
-    const { gl, scene, camera } = useThree();
-    const [slotsData, setSlotsData] = useState(
-        Array(CONFIG.SLOT_COLS * CONFIG.SLOT_ROWS).fill(null).map(() =>
-            Array(CONFIG.PIXELS_PER_SLOT * CONFIG.PIXELS_PER_SLOT).fill('#9c8d76')
-        )
-    );
-    const [isResetting, setIsResetting] = useState(false);
-    const [isFinalShow, setIsFinalShow] = useState(false);
-    const [snapshots, setSnapshots] = useState([]); // 🎬 Zaman atlamalı kayıt
-
-    const resetStartTimeRef = useRef(0);
-    const lastSnapshotProgress = useRef(0);
-
-    // 🎧 AMBİYANS VE FİNAL KONTROLÜ
-    useEffect(() => {
-        let filledCount = 0;
-        const totalPixels = CONFIG.SLOT_COLS * CONFIG.SLOT_ROWS * CONFIG.PIXELS_PER_SLOT * CONFIG.PIXELS_PER_SLOT;
-
-        slotsData.forEach(slot => {
-            slot.forEach(pixel => {
-                if (pixel !== '#9c8d76' && pixel !== '#d4c5a9') filledCount++;
-            });
-        });
-
-        const progress = filledCount / totalPixels;
-
-        // Zaman atlamalı kayıt (Her %5'te bir kare al)
-        if (progress > lastSnapshotProgress.current + 0.05) {
-            setSnapshots(prev => [...prev, JSON.parse(JSON.stringify(slotsData))]);
-            lastSnapshotProgress.current = progress;
-            console.log(`🎬 Snapshot alındı: %${Math.round(progress * 100)}`);
-        }
-
-        // Final Şovu Tetikle
-        if (progress >= 0.99 && !isFinalShow && !isResetting) {
-            setIsFinalShow(true);
-            if (onFinalShow) onFinalShow(true);
-            console.log('🎉 FİNAL SEREMONİSİ BAŞLIYOR!');
-            import('../../audio/AudioManager').then(({ audioManager }) => {
-                audioManager.playFinalCrescendo();
-            });
-
-            // 5 saniye sonra Time-Lapse'i oynat ve resetle
-            setTimeout(() => {
-                // Şimdilik sadece reset, ilerde Time-Lapse izletme eklenebilir
-                if (propSocket) propSocket.emit('manual-reset');
-                setIsFinalShow(false);
-                if (onFinalShow) onFinalShow(false);
-                import('../../audio/AudioManager').then(({ audioManager }) => {
-                    audioManager.stopAll();
-                });
-                setSnapshots([]);
-                lastSnapshotProgress.current = 0;
-            }, 8000);
-        }
-
-        import('../../audio/AudioManager').then(({ audioManager }) => {
-            if (audioManager.isInitialized) {
-                audioManager.updateDrone(progress);
-            }
-        });
-
-    }, [slotsData, isFinalShow, isResetting, propSocket]);
-
+    // 🧶 Uçan pikseller queue'u
     const flyingQueueRef = useRef([]);
-    const audioContextRef = useRef(null);
 
-    // 🧶 PAYLAŞIMLI YÜN MATERYALİ (Tüm bölmeler için tek bir tane)
-    const sharedWoolMaterial = useMemo(() => {
-        const mat = createWoolMaterial(new THREE.Color('#ffffff'));
-        mat.map = WOOL_TEXTURE;
-        mat.normalMap = WOOL_NORMAL;
-        return mat;
+    // Yün doku texture'ları
+    const woolNormal = useMemo(() => createWoolNormalMap(), []);
+    const woolBump = useMemo(() => createWoolBumpMap(), []);
+
+    // Offscreen canvas - halı texture'ı
+    const initCanvas = useCallback(() => {
+        const canvas = document.createElement('canvas');
+        canvas.width = CONFIG.TEXTURE_WIDTH;
+        canvas.height = CONFIG.TEXTURE_HEIGHT;
+        const ctx = canvas.getContext('2d');
+
+        // Halının varsayılan rengi (açık krem — çizimler öne çıksın)
+        ctx.fillStyle = '#e8dcc8';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // İnce dokuma ızgara efekti
+        ctx.strokeStyle = 'rgba(0,0,0,0.04)';
+        ctx.lineWidth = 0.5;
+        const gridStep = 6;
+        for (let x = 0; x < canvas.width; x += gridStep) {
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, canvas.height);
+            ctx.stroke();
+        }
+        for (let y = 0; y < canvas.height; y += gridStep) {
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(canvas.width, y);
+            ctx.stroke();
+        }
+
+        offscreenCanvasRef.current = canvas;
+        offscreenCtxRef.current = ctx;
+
+        // Three.js Texture
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.minFilter = THREE.LinearMipmapLinearFilter;
+        texture.magFilter = THREE.LinearFilter;
+        texture.generateMipmaps = true;
+        texture.needsUpdate = true;
+        textureRef.current = texture;
+
+        return texture;
     }, []);
 
-    useFrame((state) => {
-        if (sharedWoolMaterial.userData.shader) {
-            sharedWoolMaterial.userData.shader.uniforms.uTime.value = state.clock.getElapsedTime();
+    const drawingTexture = useMemo(() => initCanvas(), [initCanvas]);
+
+    // Yün materyal
+    const woolMaterial = useMemo(() => {
+        const mat = createCarpetMaterial(drawingTexture, woolNormal, woolBump);
+        materialRef.current = mat;
+        return mat;
+    }, [drawingTexture, woolNormal, woolBump]);
+
+    // =====================================================================
+    // 🧶 İPLİK DOKUMA EFEKTİ
+    // =====================================================================
+    const THREAD_SIZE = 3; // İplik aralığı (küçük = daha detaylı)
+
+    // Anında dokuma çiz (initial-carpet yüklemesi için — animasyonsuz)
+    const drawWovenImage = useCallback((drawing) => {
+        const ctx = offscreenCtxRef.current;
+        if (!ctx) {
+            console.warn('⚠️ drawWovenImage: ctx henüz hazır değil!');
+            return;
         }
-    });
+        if (!drawing.dataUrl) {
+            console.warn('⚠️ drawWovenImage: dataUrl boş!', drawing.id);
+            return;
+        }
 
-    useEffect(() => {
-        if (!propSocket) return;
+        console.log(`🧶 drawWovenImage başladı: x=${drawing.x} y=${drawing.y} w=${drawing.width} h=${drawing.height}`);
 
-        propSocket.on('initial-carpet', ({ carpetState }) => {
-            console.log('📦 Halı durumu senkronize edildi:', carpetState);
-            setSlotsData(prev => {
-                const newData = [...prev];
-                carpetState.forEach((pixels, slotId) => {
-                    if (pixels) newData[slotId] = pixels;
-                });
-                return newData;
-            });
-        });
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+            console.log(`✅ drawWovenImage resim yüklendi: ${drawing.width}x${drawing.height}`);
+            // 1️⃣ Önce çizimi tam çözünürlükte direkt yapıştır (canlı renkler)
+            ctx.save();
+            ctx.globalAlpha = 1.0;
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.drawImage(img, drawing.x, drawing.y, drawing.width, drawing.height);
 
-        propSocket.on('batch-update', (updates) => {
-            console.log('📨 Batch update received:', updates.length, 'items');
+            // 2️⃣ Üstüne hafif iplik dokusu overlay
+            const tmpCanvas = document.createElement('canvas');
+            tmpCanvas.width = drawing.width;
+            tmpCanvas.height = drawing.height;
+            const tmpCtx = tmpCanvas.getContext('2d');
+            tmpCtx.drawImage(img, 0, 0, drawing.width, drawing.height);
+            const imageData = tmpCtx.getImageData(0, 0, drawing.width, drawing.height);
+            const pixels = imageData.data;
 
-            // 1. Uçan Pikselleri kuyruğa ekle (Loop)
-            updates.forEach(({ slotId, pixels }) => {
-                const basePos = getSlotBasePosition(slotId);
-                const startPos = new THREE.Vector3(0, 50, 50);
+            // İplik çizgileri — çok hafif overlay
+            ctx.globalAlpha = 0.06;
+            ctx.globalCompositeOperation = 'source-over';
 
-                pixels.forEach((data, i) => {
-                    const xRel = i % CONFIG.PIXELS_PER_SLOT;
-                    const zRel = Math.floor(i / CONFIG.PIXELS_PER_SLOT);
+            for (let ty = 0; ty < drawing.height; ty += THREAD_SIZE) {
+                for (let tx = 0; tx < drawing.width; tx += THREAD_SIZE) {
+                    const pi = (ty * drawing.width + tx) * 4;
+                    const r = pixels[pi], g = pixels[pi + 1], b = pixels[pi + 2], a = pixels[pi + 3];
+                    if (a < 30) continue;
 
-                    const targetX = basePos.x + (xRel - CONFIG.PIXELS_PER_SLOT / 2) * CONFIG.NODE_SIZE;
-                    const targetZ = basePos.z + (zRel - CONFIG.PIXELS_PER_SLOT / 2) * CONFIG.NODE_SIZE;
-                    const targetPos = new THREE.Vector3(targetX, 0, targetZ);
+                    ctx.fillStyle = `rgba(0,0,0,0.3)`;
+                    ctx.fillRect(drawing.x + tx, drawing.y + ty + THREAD_SIZE * 0.5, THREAD_SIZE, 0.5);
+                    ctx.fillRect(drawing.x + tx + THREAD_SIZE * 0.5, drawing.y + ty, 0.5, THREAD_SIZE);
+                }
+            }
+
+            ctx.restore();
+            needsUpdateRef.current = true;
+            console.log(`✅ drawWovenImage tamamlandı: ${drawing.id?.substring(0, 15)}`);
+        };
+        img.onerror = (e) => {
+            console.error('❌ drawWovenImage resim yüklenemedi!', drawing.id, e);
+        };
+        img.src = drawing.dataUrl;
+    }, []);
+
+    // =====================================================================
+    // 🚀 UÇAN PİKSEL SİSTEMİ — Çizimden 3D parçacıklara
+    // =====================================================================
+
+    // Canvas koordinatından 3D world koordinatına dönüşüm
+    const canvasToWorld = useCallback((canvasX, canvasY) => {
+        // Canvas: 0..TEXTURE_WIDTH → World: -carpetWidth/2..+carpetWidth/2
+        // Canvas: 0..TEXTURE_HEIGHT → World: -carpetDepth/2..+carpetDepth/2
+        const worldX = (canvasX / CONFIG.TEXTURE_WIDTH - 0.5) * carpetWidth;
+        const worldZ = (canvasY / CONFIG.TEXTURE_HEIGHT - 0.5) * carpetDepth;
+        return { x: worldX, z: worldZ };
+    }, [carpetWidth, carpetDepth]);
+
+    // Yeni çizim geldiğinde → piksel çıkar, spiral yol oluştur, kuyruğa ekle
+    const launchFlyingPixels = useCallback((drawing) => {
+        const img = new Image();
+        img.onload = () => {
+            const tmpCanvas = document.createElement('canvas');
+            tmpCanvas.width = drawing.width;
+            tmpCanvas.height = drawing.height;
+            const tmpCtx = tmpCanvas.getContext('2d');
+            tmpCtx.drawImage(img, 0, 0, drawing.width, drawing.height);
+            const imageData = tmpCtx.getImageData(0, 0, drawing.width, drawing.height);
+            const pixels = imageData.data;
+
+            const now = Date.now();
+            let pixelIndex = 0;
+
+            // 🎲 Uçuş stili seç (tüm çizim için aynı stil)
+            const flightStyle = Math.floor(Math.random() * 3); // 0=spiral, 1=dalga, 2=kaskad
+
+            // Uçan blok boyutu — daha büyük = daha az parçacık, daha temiz görüntü
+            const FLY_BLOCK = 12;
+
+            for (let ty = 0; ty < drawing.height; ty += FLY_BLOCK) {
+                for (let tx = 0; tx < drawing.width; tx += FLY_BLOCK) {
+                    const pi = (ty * drawing.width + tx) * 4;
+                    const r = pixels[pi], g = pixels[pi + 1], b = pixels[pi + 2], a = pixels[pi + 3];
+                    if (a < 30) continue;
+
+                    // Hedef canvas koordinatı
+                    const destX = drawing.x + tx;
+                    const destY = drawing.y + ty;
+
+                    // 3D world hedef
+                    const target = canvasToWorld(destX, destY);
+                    const targetPos = new THREE.Vector3(target.x, 0.05, target.z);
+
+                    // 🎯 360° rastgele başlangıç yönü
+                    const spawnAngle = Math.random() * Math.PI * 2;
+                    const spawnDist = 15 + Math.random() * 20;
+                    const spawnHeight = 5 + Math.random() * 18;
+                    const spawnX = targetPos.x + Math.cos(spawnAngle) * spawnDist;
+                    const spawnZ = targetPos.z + Math.sin(spawnAngle) * spawnDist;
 
                     const points = [];
-                    const spiralLoops = 2 + Math.random(); // Biraz varyasyon
-                    const startRadius = 30;
 
-                    points.push(startPos);
-
-                    for (let j = 0; j <= 10; j++) {
-                        const t = j / 10;
-                        const angle = t * Math.PI * 2 * spiralLoops;
-                        const radius = startRadius * (1 - t);
-                        const height = startPos.y * (1 - t) + targetPos.y * t;
-                        const offsetX = Math.cos(angle) * radius;
-                        const offsetZ = Math.sin(angle) * radius;
-                        const randX = (Math.random() - 0.5) * 5;
-                        const randY = (Math.random() - 0.5) * 5;
-                        const randZ = (Math.random() - 0.5) * 5;
-
+                    if (flightStyle === 0) {
+                        // 🌀 SPİRAL — 360° dönerek iniş
+                        const startPos = new THREE.Vector3(spawnX, spawnHeight, spawnZ);
+                        points.push(startPos);
+                        const spiralLoops = 1.5 + Math.random() * 1.5;
+                        const startRadius = 5 + Math.random() * 8;
+                        for (let j = 0; j <= 10; j++) {
+                            const t = j / 10;
+                            const angle = spawnAngle + t * Math.PI * 2 * spiralLoops;
+                            const radius = startRadius * (1 - t * 0.7);
+                            const height = startPos.y * (1 - t) + targetPos.y * t;
+                            points.push(new THREE.Vector3(
+                                targetPos.x + Math.cos(angle) * radius,
+                                height + Math.sin(t * Math.PI) * 4,
+                                targetPos.z + Math.sin(angle) * radius
+                            ));
+                        }
+                    } else if (flightStyle === 1) {
+                        // 🌊 DALGA — 360° sinüzoidal yol
+                        const startPos = new THREE.Vector3(spawnX, spawnHeight, spawnZ);
+                        points.push(startPos);
+                        for (let j = 0; j <= 8; j++) {
+                            const t = j / 8;
+                            const wave = Math.sin(t * Math.PI * 3) * (4 + Math.random() * 3);
+                            // Dalga yönüne dik salınım
+                            const perpAngle = spawnAngle + Math.PI / 2;
+                            points.push(new THREE.Vector3(
+                                startPos.x + (targetPos.x - startPos.x) * t + Math.cos(perpAngle) * wave,
+                                startPos.y * (1 - t) + targetPos.y * t + Math.sin(t * Math.PI) * 3,
+                                startPos.z + (targetPos.z - startPos.z) * t + Math.sin(perpAngle) * wave
+                            ));
+                        }
+                    } else {
+                        // 🌈 KASKAD — 360° yönden yükselip düşüş
+                        const startPos = new THREE.Vector3(spawnX, spawnHeight, spawnZ);
+                        points.push(startPos);
+                        // Zirveye çık (halının üstünde)
+                        const peakHeight = 22 + Math.random() * 8;
                         points.push(new THREE.Vector3(
-                            targetPos.x + offsetX + randX,
-                            height + randY + 10,
-                            targetPos.z + offsetZ + randZ
+                            targetPos.x + Math.cos(spawnAngle) * spawnDist * 0.3,
+                            peakHeight,
+                            targetPos.z + Math.sin(spawnAngle) * spawnDist * 0.3
                         ));
+                        // Hızlı düşüş
+                        for (let j = 0; j <= 5; j++) {
+                            const t = j / 5;
+                            points.push(new THREE.Vector3(
+                                targetPos.x + Math.cos(spawnAngle) * spawnDist * 0.1 * (1 - t),
+                                (peakHeight * (1 - t * t)) + targetPos.y * (t * t),
+                                targetPos.z + Math.sin(spawnAngle) * spawnDist * 0.1 * (1 - t)
+                            ));
+                        }
                     }
-                    points.push(targetPos);
 
+                    points.push(targetPos);
                     const curve = new THREE.CatmullRomCurve3(points);
-                    curve.tension = 0.5;
+                    curve.tension = 0.4;
+
+                    const color = `rgb(${r},${g},${b})`;
+                    const speed = 0.15 + Math.random() * 0.08; // Değişken hız
 
                     flyingQueueRef.current.push({
-                        id: Date.now() + Math.random() + i, // Unique ID
-                        slotId,
-                        pixelIndex: i,
-                        data,
+                        id: now + Math.random() + pixelIndex,
                         curve,
                         progress: 0,
-                        startTime: Date.now() + i * 2, // Sırayla gelsinler
-                        landed: false
+                        speed,
+                        startTime: now + pixelIndex * 3,
+                        landed: false,
+                        color,
+                        destX,
+                        destY,
+                        r, g, b, a
                     });
-                });
-            });
-        });
 
-        propSocket.on('carpet-reset', () => {
-            console.log('🔄 HALI SIFIRLANIYOR!');
-            try {
-                gl.render(scene, camera);
-                const dataURL = gl.domElement.toDataURL('image/png');
-                const link = document.createElement('a');
-                const date = new Date().toISOString().replace(/[:.]/g, '-');
-                link.setAttribute('download', `hali-tezgahi-${date}.png`);
-                link.setAttribute('href', dataURL);
-                link.click();
-            } catch (e) {
-                console.error('Screenshot hatası:', e);
+                    pixelIndex++;
+                }
             }
 
-            setIsResetting(true);
-            resetStartTimeRef.current = Date.now();
+            console.log(`🧶 ${pixelIndex} iplik uçuşa geçti! (stil: ${['spiral', 'dalga', 'kaskad'][flightStyle]})`);
 
-            setTimeout(() => {
-                setSlotsData(
-                    Array(CONFIG.SLOT_COLS * CONFIG.SLOT_ROWS).fill(null).map(() =>
-                        Array(CONFIG.PIXELS_PER_SLOT * CONFIG.PIXELS_PER_SLOT).fill('#9c8d76')
-                    )
-                );
-                setIsResetting(false);
-            }, 3000);
-        });
-
-        return () => {
-            if (propSocket) {
-                propSocket.off('initial-carpet');
-                propSocket.off('batch-update');
-                propSocket.off('carpet-reset');
-            }
+            // 🔊 Uçuş başlangıç sesi
+            try { audioManager.playWhoosh(); } catch (e) { }
         };
-    }, [propSocket, gl, scene, camera]);
+        img.src = drawing.dataUrl;
+    }, [canvasToWorld, carpetWidth, carpetDepth]);
 
-    const handleLand = (item) => {
-        const { slotId, pixelIndex, data } = item;
-        const color = typeof data === 'object' ? data.tl : data;
+    // 🛬 Piksel konduğunda — canvas'a canlı renk + glow olarak çiz
+    const handleLand = useCallback((item) => {
+        const ctx = offscreenCtxRef.current;
+        if (!ctx) return;
 
-        // 🌊 DALGALANMA TETİKLE
-        const impactPos = item.curve.getPoint(1); // Varış noktası
-        if (sharedWoolMaterial.userData.shader) {
-            sharedWoolMaterial.userData.shader.uniforms.uImpactPos.value.copy(impactPos);
-            sharedWoolMaterial.userData.shader.uniforms.uImpactTime.value = sharedWoolMaterial.userData.shader.uniforms.uTime.value;
-        }
+        const LAND_BLOCK = 12;
 
-        setSlotsData(prev => {
-            const newData = [...prev];
-            if (!newData[slotId] || newData[slotId][0] === '#d4c5a9') {
-                newData[slotId] = Array(CONFIG.PIXELS_PER_SLOT * CONFIG.PIXELS_PER_SLOT).fill('#9c8d76');
-            }
-            const newSlot = [...newData[slotId]];
-            newSlot[pixelIndex] = color;
-            newData[slotId] = newSlot;
-            return newData;
-        });
+        // ✨ Konma parıltısı (glow halo)
+        const glowSize = LAND_BLOCK * 2;
+        const gradient = ctx.createRadialGradient(
+            item.destX + LAND_BLOCK / 2, item.destY + LAND_BLOCK / 2, 0,
+            item.destX + LAND_BLOCK / 2, item.destY + LAND_BLOCK / 2, glowSize
+        );
+        gradient.addColorStop(0, `rgba(${item.r},${item.g},${item.b},0.4)`);
+        gradient.addColorStop(0.5, `rgba(${item.r},${item.g},${item.b},0.1)`);
+        gradient.addColorStop(1, `rgba(${item.r},${item.g},${item.b},0)`);
+        ctx.fillStyle = gradient;
+        ctx.fillRect(
+            item.destX - glowSize + LAND_BLOCK / 2,
+            item.destY - glowSize + LAND_BLOCK / 2,
+            glowSize * 2, glowSize * 2
+        );
 
-        if (playLandSound) playLandSound();
+        // Canlı renkle dolu kare çiz
+        ctx.fillStyle = `rgba(${item.r},${item.g},${item.b},${(item.a / 255)})`;
+        ctx.fillRect(item.destX, item.destY, LAND_BLOCK, LAND_BLOCK);
 
+        // Hafif iplik izi (gölge çizgisi)
+        ctx.fillStyle = `rgba(0,0,0,0.06)`;
+        ctx.fillRect(item.destX, item.destY + LAND_BLOCK * 0.5, LAND_BLOCK, 0.5);
+
+        needsUpdateRef.current = true;
+
+        // 🎵 Renk piyano notası — her konmada rengin notası çalar
+        try {
+            const hex = '#' + [item.r, item.g, item.b].map(c => c.toString(16).padStart(2, '0')).join('');
+            audioManager.playNoteForColor(hex);
+        } catch (e) { }
+
+        // Queue'dan kaldır
         const index = flyingQueueRef.current.findIndex(p => p.id === item.id);
         if (index > -1) {
             flyingQueueRef.current.splice(index, 1);
         }
-    };
+    }, []);
+
+    // =====================================================================
+    // SOCKET EVENTLERI
+    // =====================================================================
+    useEffect(() => {
+        if (!socket) return;
+
+        socket.on('initial-carpet', ({ drawings }) => {
+            console.log(`📦 initial-carpet geldi: ${drawings?.length || 0} çizim`);
+            if (drawings && drawings.length > 0) {
+                drawings.forEach((drawing, i) => {
+                    // Her çizim sırayla uçarak gelsin
+                    setTimeout(() => launchFlyingPixels(drawing), i * 800);
+                });
+            }
+        });
+
+        socket.on('new-drawing', (drawing) => {
+            launchFlyingPixels(drawing);
+        });
+
+        socket.on('carpet-reset', () => {
+            const ctx = offscreenCtxRef.current;
+            const canvas = offscreenCanvasRef.current;
+            if (!ctx || !canvas) return;
+
+            flyingQueueRef.current = [];
+
+            ctx.fillStyle = '#c8b896';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.strokeStyle = 'rgba(0,0,0,0.04)';
+            ctx.lineWidth = 0.5;
+            const gridStep = 6;
+            for (let x = 0; x < canvas.width; x += gridStep) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+            for (let y = 0; y < canvas.height; y += gridStep) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+
+            needsUpdateRef.current = true;
+        });
+
+        // 🔑 KALICI FIX: Bileşen mount olduktan sonra veriyi tekrar iste
+        // (socket zaten bağlıysa initial-carpet eventi kaçırılmış olabilir)
+        console.log('🔄 request-initial-carpet gönderiliyor...');
+        socket.emit('request-initial-carpet');
+
+        return () => {
+            socket.off('initial-carpet');
+            socket.off('new-drawing');
+            socket.off('carpet-reset');
+        };
+    }, [socket, drawWovenImage, launchFlyingPixels]);
+
+    // Frame loop: texture + shader time güncelle
+    useFrame((state) => {
+        if (needsUpdateRef.current && textureRef.current) {
+            textureRef.current.needsUpdate = true;
+            needsUpdateRef.current = false;
+        }
+
+        // Shader time güncelle
+        if (materialRef.current?.userData?.shader) {
+            materialRef.current.userData.shader.uniforms.uTime.value = state.clock.elapsedTime;
+        }
+    });
 
     return (
-        <>
-            {slotsData.map((slot, index) => {
-                const pos = getSlotBasePosition(index);
-                return (
-                    <CarpetSlot
-                        key={index}
-                        index={index}
-                        data={slot}
-                        pos={pos}
-                        isResetting={isResetting}
-                        resetStartTime={resetStartTimeRef.current}
-                        woolMaterial={sharedWoolMaterial}
-                    />
-                );
-            })}
+        <group>
+            {/* ANA HALI YÜZEYİ */}
+            <mesh ref={meshRef} position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow castShadow>
+                <planeGeometry args={[carpetWidth, carpetDepth, 64, 64]} />
+                <primitive object={woolMaterial} attach="material" />
+            </mesh>
 
+            {/* 🧶 UÇAN İPLİKLER */}
             <FlyingPixelsInstances
                 queueRef={flyingQueueRef}
                 onLand={handleLand}
             />
 
+            {/* Çocuk bileşenler (Border, Fringes vb.) */}
             {children}
-        </>
+        </group>
     );
-};
+}
 
 export default CarpetBoard;
+

@@ -1,20 +1,54 @@
 export const CONFIG = {
-    SLOT_COLS: 6,
-    SLOT_ROWS: 10,
-    PIXELS_PER_SLOT: 16,
+    // Halı boyutları (3D birim)
+    CARPET_WIDTH: 24,   // Eski: 6 * 4 = 24
+    CARPET_DEPTH: 40,   // Eski: 10 * 4 = 40
+
+    // Çizim canvas çözünürlüğü
+    CANVAS_RESOLUTION: 768,
+
+    // Halı texture çözünürlüğü (host tarafı)
+    TEXTURE_WIDTH: 1600,
+    TEXTURE_HEIGHT: 2667,      // 24:40 oran (yüksek çözünürlük)
+
+    // Çizim yerleştirme
+    DRAWING_SCALE: 0.25,       // Çizim halıya ne kadar küçültülecek
+    MAX_DRAWINGS: 60,          // Max çizim sayısı
+
+    // Eski uyumluluk
     NODE_SIZE: 0.25,
-    GAP: 0,
 };
 
-// Geniş Renk Paleti - Geleneksel Halı Renkleri + Modern Tonlar 🎨
-export const PALETTE = [
-    '#c0392b', '#8B0000', '#e74c3c', '#d35400', '#e67e22', '#f39c12',
-    '#f1c40f', '#2ecc71', '#27ae60', '#16a085', '#3498db', '#2980b9',
-    '#8e44ad', '#9b59b6', '#ecf0f1', '#2c3e50', '#000000', '#7f8c8d',
-    '#273c75', '#192a56', '#44bd32', '#40739e', '#e1b12c', '#487eb0',
-    '#c23616', '#b33939', '#218c74', '#33d9b2', '#ffb142', '#cc8e35',
-    '#574b90', '#706fd3', '#474747', '#aaa69d'
+// 🎨 Kategorili Renk Paleti — Geleneksel Halı Renkleri + Modern Tonlar
+export const PALETTE_CATEGORIES = [
+    {
+        name: 'Sıcak',
+        emoji: '🔥',
+        colors: ['#c0392b', '#8B0000', '#e74c3c', '#d35400', '#e67e22', '#f39c12', '#f1c40f', '#c23616', '#b33939', '#ffb142']
+    },
+    {
+        name: 'Soğuk',
+        emoji: '❄️',
+        colors: ['#3498db', '#2980b9', '#273c75', '#192a56', '#40739e', '#487eb0', '#8e44ad', '#9b59b6', '#574b90', '#706fd3']
+    },
+    {
+        name: 'Doğa',
+        emoji: '🌿',
+        colors: ['#2ecc71', '#27ae60', '#16a085', '#218c74', '#33d9b2', '#44bd32', '#1abc9c', '#0a3d62', '#079992', '#38ada9']
+    },
+    {
+        name: 'Toprak',
+        emoji: '🏺',
+        colors: ['#e1b12c', '#cc8e35', '#a0522d', '#8B4513', '#D2691E', '#CD853F', '#B8860B', '#DAA520', '#d4a574', '#c19a6b']
+    },
+    {
+        name: 'Nötr',
+        emoji: '⚪',
+        colors: ['#000000', '#2c3e50', '#474747', '#7f8c8d', '#aaa69d', '#bdc3c7', '#ecf0f1', '#ffffff']
+    }
 ];
+
+// Flat palette (backward compat)
+export const PALETTE = PALETTE_CATEGORIES.flatMap(c => c.colors);
 
 export const THEME = {
     bg: 'radial-gradient(circle at top right, #1a1a2e, #0f0f1a)',
