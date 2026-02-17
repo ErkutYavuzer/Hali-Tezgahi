@@ -773,7 +773,7 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
             // 🔊 Uçuş başlangıç sesi
             try { audioManager.playWhoosh(); } catch (e) { }
 
-            // 🎨 Pikseller konduktan sonra → sadece isim yaz (AI ayrı gelecek)
+            // 🎨 Pikseller konduktan sonra → enhancement + isim yaz
             const estimatedLandTime = Math.min(pixelIndex * 3 + 2000, 5000);
             const drawingId = drawing.id || `${Date.now()}`;
 
@@ -785,15 +785,16 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
             pendingEnhancementsRef.current[drawingId] = setTimeout(() => {
                 const ctx = offscreenCtxRef.current;
                 if (ctx) {
+                    applyWovenEnhancement(ctx, drawing.x, drawing.y, drawing.width, drawing.height);
                     renderWovenName(ctx, drawing.userName, drawing.x, drawing.y, drawing.width, drawing.height);
                     needsUpdateRef.current = true;
-                    console.log(`✍️ İsim yazıldı: ${drawing.userName} (${drawingId.substring(0, 15)})`);
+                    console.log(`🎨 Enhancement + isim: ${drawing.userName} (${drawingId.substring(0, 15)})`);
                 }
                 delete pendingEnhancementsRef.current[drawingId];
             }, estimatedLandTime);
         };
         img.src = drawing.dataUrl;
-    }, [canvasToWorld, carpetWidth, carpetDepth, renderWovenName]);
+    }, [canvasToWorld, carpetWidth, carpetDepth, renderWovenName, applyWovenEnhancement]);
 
     // 🛬 Piksel konduğunda — canvas'a canlı renk + glow olarak çiz
     const handleLand = useCallback((item) => {
@@ -959,8 +960,8 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
                             aiImg.src = drawing.aiDataUrl;
                         }, i * 100); // Hızlı sıralı yükleme
                     } else {
-                        // ⏳ AI motifi yok — flying pixels ile göster
-                        setTimeout(() => launchFlyingPixels(drawing), i * 800);
+                        // ⏳ AI motifi yok — orijinal çizimi direkt göster
+                        setTimeout(() => drawWovenImage(drawing), i * 100);
                     }
                 });
             }
