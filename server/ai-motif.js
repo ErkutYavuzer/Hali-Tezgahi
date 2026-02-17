@@ -1,85 +1,87 @@
 /**
- * 🤖 AI Motif Stilizasyonu — Çizimi KORUYARAK güzelleştirme
+ * 🤖 AI Motif Stilizasyonu — Çizimi PROFESYONELKİLİM MOTİFİNE dönüştürme
  * 
- * TEMEL FELSEFe: Kullanıcının çizimini YERİNE KOYMAK DEĞİL,
- * üzerine kilim estetiği KATMAK. Orijinal şekil ve anlam KORUNMALI.
+ * YENİ STRATEJİ (v4.5+):
+ *  1. gemini-2.5-flash ile çizimi ANALIZ et (ne çizilmiş?)
+ *  2. Aynı modelle O ŞEKLİN kilim motifi versiyonunu SVG olarak üret
+ *  3. SVG'yi client'a gönder → çizimin üzerine blend
  * 
- * Strateji:
- *  1. gemini-3-pro-image → orijinali güzelleştir (en iyi)
- *  2. gpt-image-1 → orijinali güzelleştir (ikinci)
- *  3. gemini-2.5-flash → SVG border/frame overlay (fallback)
- * 
- * Client-side'da orijinal çizim HER ZAMAN %70+ korunur,
- * AI sonucu sadece enhancement layer olarak uygulanır.
+ * Image generation modelleri (gemini-3-pro-image) 503 verdiğinden
+ * metin tabanlı SVG üretim yaklaşımı kullanılıyor.
  */
 
 const API_URL = process.env.AI_API_URL || 'https://antigravity2.mindops.net/v1/chat/completions';
 const API_KEY = process.env.AI_API_KEY || 'sk-antigravity-lejyon-2026';
-const PRIMARY_MODEL = 'gemini-3-pro-image';
-const SECONDARY_MODEL = 'gpt-image-1';
-const FALLBACK_MODEL = 'gemini-2.5-flash';
+const MOTIF_MODEL = 'gemini-2.5-flash';
 
 const MAX_RETRIES = 2;
-const RETRY_DELAY_MS = 12000;
-const REQUEST_TIMEOUT_MS = 180000;
+const REQUEST_TIMEOUT_MS = 60000;
 
 let activeRequests = 0;
-const MAX_CONCURRENT = 2;
+const MAX_CONCURRENT = 3;
 const pendingQueue = [];
 
-// 🎨 IMAGE ENHANCEMENT prompt — "REPLACE DEĞİL, ENHANCE"
-const IMAGE_PROMPT = `You are enhancing a freehand drawing for a digital carpet weaving installation.
+// ─────────────────────────────────────────────────────────────
+// 🔍 STEP 1: Çizimin ne olduğunu analiz et
+// ─────────────────────────────────────────────────────────────
+const ANALYZE_PROMPT = `Look at this freehand drawing from a child or visitor at an interactive carpet weaving exhibition.
 
-LOOK at the attached drawing carefully. Your job is to ENHANCE it, NOT replace it.
+Identify what the drawing represents in 1-3 words. Examples: "sun", "flower", "heart", "star", "house", "tree", "cat", "butterfly", "fish", "rainbow".
 
-ABSOLUTE RULES — VIOLATION = FAILURE:
-1. The OUTPUT must look 80%+ IDENTICAL to the INPUT drawing
-2. SAME shapes, SAME colors, SAME composition, SAME meaning
-3. DO NOT add new major shapes or figures that weren't in the original
-4. DO NOT change what the drawing represents
+Also identify the PRIMARY COLOR used (e.g. "yellow", "red", "blue").
 
-ALLOWED enhancements (subtle only):
-- Smooth out jagged brush strokes slightly
-- Enrich colors: make reds deeper, blues richer, but keep the SAME hue
-- Add a tiny decorative border frame (2-3px) around the edges in kilim style
-- Add very subtle woven texture overlay (like fine fabric grain)
-- Slightly sharpen edges for clarity
+Respond in EXACTLY this format, nothing else:
+SUBJECT: [1-3 words]
+COLOR: [primary color]`;
 
-FORBIDDEN:
-- Creating a new image from scratch
-- Adding geometric kilim motifs that weren't drawn
-- Replacing the drawing with traditional patterns
-- Changing the subject matter or composition
-- Making it look like a DIFFERENT drawing
+// ─────────────────────────────────────────────────────────────
+// 🧶 STEP 2: O şeklin kilim motifi SVG versiyonunu üret
+// ─────────────────────────────────────────────────────────────
+function getMotifPrompt(subject, primaryColor) {
+    return `Create a 256x256 SVG of a "${subject}" designed as a traditional Anatolian kilim carpet motif.
 
-Think of yourself as a skilled craftsperson who takes the visitor's exact drawing 
-and carefully weaves it into fabric — the image stays the same, 
-only the MEDIUM changes (from digital to woven).
+STYLE REQUIREMENTS:
+- Pure GEOMETRIC kilim style — the "${subject}" must be rendered using only triangles, diamonds, rectangles, zigzag lines
+- NO curves, NO circles, NO smooth shapes — everything angular and geometric like a real woven pattern
+- The motif should be IMMEDIATELY RECOGNIZABLE as "${subject}" even in geometric style
+- Use bilateral symmetry (mirror left↔right)
+- Fill the entire 256x256 area — no empty space
 
-Background should remain transparent where the original had transparency.
-Output SQUARE format.
-Generate ONLY the image.`;
+COLOR PALETTE (use these kilim colors, primary should be ${primaryColor}):
+- ${primaryColor === 'yellow' ? '#c8a951' : primaryColor === 'red' ? '#c41e3a' : primaryColor === 'blue' ? '#1a3a6b' : primaryColor === 'green' ? '#2d5a27' : '#c8a951'} (main motif)
+- #f5f0e8 (cream background)
+- #5c1a0a (dark border accents)
+- #c41e3a (red accents)
+- #1a3a6b (blue details)
+- #c8a951 (gold highlights)
+- #2d5a27 (green if needed)
 
-// 🎨 SVG BORDER-ONLY fallback — sadece çerçeve ve dekoratif kenar üretir
-const SVG_BORDER_PROMPT = `Look at this freehand drawing. Create a 256x256 SVG that serves as a DECORATIVE BORDER FRAME for this drawing.
+COMPOSITION:
+- Center the "${subject}" motif large (80% of the area)
+- Add a 10px geometric border with small diamond patterns
+- Small corner decorations (elibelinde/hands-on-hips triangles)
+- Background: cream #f5f0e8
 
-CRITICAL: You are NOT recreating the drawing. You are creating ONLY a border/frame to go AROUND it.
+TECHNICAL:
+- Output ONLY raw SVG code. Start with <svg, end with </svg>
+- Use <polygon>, <rect>, <path> with L/M/Z commands only (no curves)
+- Maximum 60 SVG elements
+- viewBox="0 0 256 256"
+- No text, no comments
 
-The SVG should contain:
-1. A decorative kilim-style border frame (geometric patterns along the 4 edges)
-2. Corner decorations (small traditional motifs at 4 corners)
-3. The CENTER must be EMPTY/TRANSPARENT — the original drawing will be placed there
-4. Use colors that complement the drawing: earthy reds, blues, golds, creams
+Here are examples of kilim motif patterns:
+- Sun: large central diamond surrounded by 8 triangular rays, border of small diamonds
+- Flower: central hexagon with 6 diamond petals, zigzag stem
+- Heart: two triangles forming an inverted V, filled with smaller diamonds
+- Star: overlapping triangles forming 6/8 pointed star
+- Cat: geometric triangular face, pointed triangle ears, diamond eyes
+- Tree: stacked triangles getting smaller upward (pine tree shape)
 
-Use basic SVG shapes. Maximum 30 elements.
-Colors: #c41e3a (red), #1a3a6b (blue), #c8a951 (gold), #f5f0e8 (cream), #2d5a27 (green).
-
-The border should be about 8-12px thick on each side.
-
-Output ONLY raw SVG code. Start with <svg, end with </svg>. No markdown, no explanation.`;
+Generate the SVG now.`;
+}
 
 /**
- * Çizimi AI ile ENHANCE eder (replace değil!)
+ * Ana motif dönüşüm pipeline'ı
  */
 export async function transformToMotif(base64DataUrl) {
     if (activeRequests >= MAX_CONCURRENT) {
@@ -90,24 +92,44 @@ export async function transformToMotif(base64DataUrl) {
     }
 
     activeRequests++;
-    console.log(`🤖 AI enhancement başlıyor... (aktif: ${activeRequests})`);
+    console.log(`🤖 AI motif pipeline başlıyor... (aktif: ${activeRequests})`);
 
     try {
-        // Strateji 1: gemini-3-pro-image ile enhance
-        const imageResult = await tryImageGeneration(base64DataUrl, PRIMARY_MODEL);
-        if (imageResult) return imageResult;
+        // STEP 1: Çizimi analiz et
+        let subject = 'abstract motif';
+        let primaryColor = 'red';
 
-        // Strateji 2: gpt-image-1 ile enhance
-        console.log('🔄 Fallback 1: gpt-image-1 deneniyor...');
-        const openaiResult = await tryImageGeneration(base64DataUrl, SECONDARY_MODEL);
-        if (openaiResult) return openaiResult;
+        try {
+            const analysis = await callAPI(MOTIF_MODEL, [
+                { type: 'text', text: ANALYZE_PROMPT },
+                { type: 'image_url', image_url: { url: base64DataUrl } }
+            ], 200);
 
-        // Strateji 3: SVG border frame (çizimin etrafına kilim çerçevesi)
-        console.log('🔄 Fallback 2: SVG border frame oluşturma...');
-        const svgResult = await trySVGBorderGeneration(base64DataUrl);
-        if (svgResult) return svgResult;
+            const subjectMatch = analysis.match(/SUBJECT:\s*(.+)/i);
+            const colorMatch = analysis.match(/COLOR:\s*(.+)/i);
 
-        return null;
+            if (subjectMatch) subject = subjectMatch[1].trim().toLowerCase();
+            if (colorMatch) primaryColor = colorMatch[1].trim().toLowerCase();
+
+            console.log(`🔍 Çizim analizi: "${subject}" (renk: ${primaryColor})`);
+        } catch (err) {
+            console.warn(`⚠️ Analiz başarısız, varsayılan kullanılıyor: ${err.message}`);
+        }
+
+        // STEP 2: Kilim motifi SVG üret
+        const motifSvg = await generateMotifSVG(subject, primaryColor);
+        if (motifSvg) {
+            console.log(`✅ Kilim motifi SVG hazır: "${subject}" (${motifSvg.length} byte)`);
+            const base64Svg = Buffer.from(motifSvg).toString('base64');
+            return `data:image/svg+xml;base64,${base64Svg}`;
+        }
+
+        // STEP 3: Fallback — basit geometrik motif
+        console.log('🔄 SVG gen başarısız, fallback geometrik motif...');
+        const fallbackSvg = generateFallbackMotif(subject, primaryColor);
+        const base64Fallback = Buffer.from(fallbackSvg).toString('base64');
+        return `data:image/svg+xml;base64,${base64Fallback}`;
+
     } finally {
         activeRequests--;
         if (pendingQueue.length > 0) {
@@ -118,52 +140,17 @@ export async function transformToMotif(base64DataUrl) {
 }
 
 /**
- * Image enhancement (orijinali koruyarak güzelleştirme)
+ * Gemini ile kilim motifi SVG üretimi
  */
-async function tryImageGeneration(base64DataUrl, model) {
+async function generateMotifSVG(subject, primaryColor) {
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
-            const result = await callAPI(model, [
-                { type: 'text', text: IMAGE_PROMPT },
-                { type: 'image_url', image_url: { url: base64DataUrl } }
-            ]);
-
-            const match = result.match(/data:image\/(jpeg|png);base64,([A-Za-z0-9+/=\n]+)/);
-            if (match) {
-                const mimeType = match[1];
-                const base64 = match[2].replace(/\n/g, '');
-                console.log(`✅ ${model} enhancement başarılı! (${mimeType}, ${Math.round(base64.length / 1024)} KB)`);
-                return `data:image/${mimeType};base64,${base64}`;
-            }
-            console.warn(`⚠️ ${model} yanıtında resim yok`);
-            return null;
-        } catch (err) {
-            if ((err.status === 503 || err.status === 429) && attempt < MAX_RETRIES) {
-                const delay = RETRY_DELAY_MS * attempt;
-                console.log(`⏳ ${model} retry ${attempt}/${MAX_RETRIES} — ${delay / 1000}s... (${err.message})`);
-                await sleep(delay);
-                continue;
-            }
-            console.log(`⚠️ ${model} başarısız: ${err.message}`);
-            return null;
-        }
-    }
-    return null;
-}
-
-/**
- * SVG BORDER frame — çizimin etrafına dekoratif kilim çerçevesi
- */
-async function trySVGBorderGeneration(base64DataUrl) {
-    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-        try {
-            const result = await callAPI(FALLBACK_MODEL, [
-                { type: 'text', text: SVG_BORDER_PROMPT },
-                { type: 'image_url', image_url: { url: base64DataUrl } }
-            ]);
+            const prompt = getMotifPrompt(subject, primaryColor);
+            const result = await callAPI(MOTIF_MODEL, [
+                { type: 'text', text: prompt }
+            ], 16384);
 
             let svg = result;
-            console.log(`🔍 SVG border yanıtı (ilk 300): ${svg.substring(0, 300)}`);
             svg = svg.replace(/```(?:xml|svg|html)?\n?/g, '').replace(/```/g, '').trim();
 
             let svgMatch = svg.match(/<svg[\s\S]*<\/svg>/i);
@@ -172,16 +159,23 @@ async function trySVGBorderGeneration(base64DataUrl) {
                 svgMatch = svg.match(/<svg[\s\S]*<\/svg>/i);
             }
             if (!svgMatch) {
-                console.warn('⚠️ SVG border yanıtında <svg> tag bulunamadı.');
+                console.warn(`⚠️ SVG motif yanıtında <svg> tag bulunamadı (attempt ${attempt})`);
                 if (attempt < MAX_RETRIES) continue;
                 return null;
             }
 
             svg = svgMatch[0];
-            console.log(`✅ SVG border oluşturuldu! (${svg.length} byte)`);
+            // viewBox yoksa ekle
+            if (!svg.includes('viewBox')) {
+                svg = svg.replace('<svg', '<svg viewBox="0 0 256 256"');
+            }
+            // width/height yoksa ekle
+            if (!svg.includes('width=')) {
+                svg = svg.replace('<svg', '<svg width="256" height="256"');
+            }
 
-            const base64Svg = Buffer.from(svg).toString('base64');
-            return `data:image/svg+xml;base64,${base64Svg}`;
+            console.log(`✅ SVG motif oluşturuldu! ("${subject}", ${svg.length} byte)`);
+            return svg;
         } catch (err) {
             if ((err.status === 503 || err.status === 429) && attempt < MAX_RETRIES) {
                 const delay = 5000 * attempt;
@@ -189,14 +183,60 @@ async function trySVGBorderGeneration(base64DataUrl) {
                 await sleep(delay);
                 continue;
             }
-            console.error(`❌ SVG border gen başarısız: ${err.message}`);
+            console.error(`❌ SVG motif gen başarısız: ${err.message}`);
             return null;
         }
     }
     return null;
 }
 
-async function callAPI(model, content) {
+/**
+ * Fallback: Basit geometrik motif (AI olmadan)
+ */
+function generateFallbackMotif(subject, primaryColor) {
+    const colors = {
+        main: primaryColor === 'yellow' ? '#c8a951' : primaryColor === 'red' ? '#c41e3a' :
+            primaryColor === 'blue' ? '#1a3a6b' : primaryColor === 'green' ? '#2d5a27' : '#c41e3a',
+        bg: '#f5f0e8',
+        accent: '#c41e3a',
+        gold: '#c8a951',
+        dark: '#5c1a0a',
+        blue: '#1a3a6b'
+    };
+
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+    <!-- Cream background -->
+    <rect width="256" height="256" fill="${colors.bg}"/>
+    <!-- Outer border -->
+    <rect x="2" y="2" width="252" height="252" fill="none" stroke="${colors.dark}" stroke-width="8"/>
+    <!-- Inner border -->
+    <rect x="12" y="12" width="232" height="232" fill="none" stroke="${colors.gold}" stroke-width="3"/>
+    <rect x="18" y="18" width="220" height="220" fill="none" stroke="${colors.blue}" stroke-width="1.5"/>
+    <!-- Central diamond motif -->
+    <polygon points="128,35 220,128 128,221 36,128" fill="${colors.main}" opacity="0.8"/>
+    <polygon points="128,55 200,128 128,201 56,128" fill="${colors.bg}"/>
+    <polygon points="128,70 185,128 128,186 71,128" fill="${colors.main}" opacity="0.6"/>
+    <polygon points="128,90 165,128 128,166 91,128" fill="${colors.accent}"/>
+    <polygon points="128,105 150,128 128,151 106,128" fill="${colors.gold}"/>
+    <!-- Corner diamonds -->
+    <polygon points="25,25 40,15 55,25 40,35" fill="${colors.accent}"/>
+    <polygon points="201,25 216,15 231,25 216,35" fill="${colors.accent}"/>
+    <polygon points="25,231 40,221 55,231 40,241" fill="${colors.accent}"/>
+    <polygon points="201,231 216,221 231,231 216,241" fill="${colors.accent}"/>
+    <!-- Edge triangles -->
+    <polygon points="128,8 135,16 121,16" fill="${colors.gold}"/>
+    <polygon points="128,248 135,240 121,240" fill="${colors.gold}"/>
+    <polygon points="8,128 16,121 16,135" fill="${colors.gold}"/>
+    <polygon points="248,128 240,121 240,135" fill="${colors.gold}"/>
+    <!-- Side diamond accents -->
+    <polygon points="80,8 88,16 80,24 72,16" fill="${colors.dark}"/>
+    <polygon points="176,8 184,16 176,24 168,16" fill="${colors.dark}"/>
+    <polygon points="80,248 88,240 80,232 72,240" fill="${colors.dark}"/>
+    <polygon points="176,248 184,240 176,232 168,240" fill="${colors.dark}"/>
+</svg>`;
+}
+
+async function callAPI(model, content, maxTokens = 8192) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
@@ -210,7 +250,7 @@ async function callAPI(model, content) {
             body: JSON.stringify({
                 model,
                 messages: [{ role: 'user', content }],
-                max_tokens: 16384
+                max_tokens: maxTokens
             }),
             signal: controller.signal
         });

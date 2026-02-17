@@ -845,9 +845,9 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
     // =====================================================================
     // 🤖 AI ENHANCEMENT OVERLAY — Orijinal çizimi KORUYARAK güzelleştirme
     // =====================================================================
-    // MAX_AI_BLEND: AI sonucu bu opacity'den fazla uygulanMAZ
-    // Orijinal çizim her zaman %100 görünür kalır, AI sadece hafif overlay
-    const MAX_AI_BLEND = 0.35;
+    // MAX_AI_BLEND: AI motifi bu opacity'de halıya dokunur
+    // v4.6+: AI tam geometrik kilim motifi üretiyor, dominant olmalı
+    const MAX_AI_BLEND = 0.80;
 
     const morphToAIMotif = useCallback(({ id, aiDataUrl, userName, x, y, width, height }) => {
         const ctx = offscreenCtxRef.current;
