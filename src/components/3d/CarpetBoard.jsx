@@ -608,7 +608,9 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
         console.log(`🧶 drawWovenImage başladı: x=${drawing.x} y=${drawing.y} w=${drawing.width} h=${drawing.height}`);
 
         const img = new Image();
-        img.crossOrigin = 'anonymous';
+        if (!drawing.dataUrl.startsWith('data:')) {
+            img.crossOrigin = 'anonymous';
+        }
         img.onload = () => {
             console.log(`✅ drawWovenImage resim yüklendi: ${drawing.width}x${drawing.height}`);
             try {
@@ -882,7 +884,9 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
         }
 
         const aiImg = new Image();
-        aiImg.crossOrigin = 'anonymous';
+        if (!aiDataUrl.startsWith('data:')) {
+            aiImg.crossOrigin = 'anonymous';
+        }
         aiImg.onload = () => {
             try {
                 // Geniş alan temizle (orijinal çizim taşması dahil)
@@ -977,13 +981,16 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
                 }
 
                 drawings.forEach((drawing, i) => {
-                    console.log(`📦 [${i}] id=${drawing.id?.substring(0, 12)} ai=${!!drawing.aiDataUrl} dataUrl=${drawing.dataUrl ? drawing.dataUrl.substring(0, 30) + '...' : 'NULL'} x=${drawing.x} y=${drawing.y} w=${drawing.width} h=${drawing.height}`);
+                    console.log(`📦 [${i}] id=${drawing.id?.substring(0, 12)} ai=${!!drawing.aiDataUrl} dataUrl=${drawing.dataUrl ? 'OK' : 'NULL'} x=${drawing.x} y=${drawing.y} w=${drawing.width} h=${drawing.height}`);
 
                     if (drawing.aiDataUrl && ctx) {
-                        // ✅ AI motifi HAZIR — direkt çiz (animasyon yok, AI'ya tekrar gitmez)
+                        // ✅ AI motifi HAZIR — direkt çiz
                         setTimeout(() => {
                             const aiImg = new Image();
-                            aiImg.crossOrigin = 'anonymous';
+                            // data: URL'lerde crossOrigin KULLANMA — hata çıkarır
+                            if (!drawing.aiDataUrl.startsWith('data:')) {
+                                aiImg.crossOrigin = 'anonymous';
+                            }
                             aiImg.onload = () => {
                                 try {
                                     ctx.save();
@@ -996,21 +1003,23 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
                                         console.warn('⚠️ İsim hatası:', nameErr.message);
                                     }
                                     needsUpdateRef.current = true;
-                                    console.log(`📦 AI motif direkt çizildi: ${drawing.id?.substring(0, 15)}`);
+                                    console.log(`📦✅ AI motif çizildi [${i}]: ${drawing.id?.substring(0, 15)}`);
                                 } catch (err) {
-                                    console.error('❌ initial-carpet AI çizim hatası:', err);
+                                    console.error('❌ AI drawImage hatası:', err);
+                                    // Fallback: orijinal çizimi göster
+                                    drawWovenImage(drawing);
                                 }
                             };
                             aiImg.onerror = (e) => {
-                                console.error(`❌ AI img yüklenemedi [${i}]:`, e);
+                                console.warn(`⚠️ AI SVG bozuk [${i}], orijinal çizim gösterilecek`);
+                                // FALLBACK: AI yüklenemedi → orijinal çizimi göster
+                                drawWovenImage(drawing);
                             };
                             aiImg.src = drawing.aiDataUrl;
-                        }, i * 100); // Hızlı sıralı yükleme
+                        }, i * 100);
                     } else {
                         // ⏳ AI motifi yok — orijinal çizimi direkt göster
-                        console.log(`📦 [${i}] drawWovenImage çağrılacak...`);
                         setTimeout(() => {
-                            console.log(`📦 [${i}] drawWovenImage setTimeout tetiklendi`);
                             drawWovenImage(drawing);
                         }, i * 100);
                     }
