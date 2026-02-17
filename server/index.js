@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import os from 'os';
+import { transformToMotif, getAIStatus } from './ai-motif.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -63,6 +64,7 @@ const io = new Server(httpServer, {
 // ============================================================================
 
 let MAX_DRAWINGS = 28; // Varsayılan (4x7 ızgara)
+let aiEnabled = true;  // 🤖 AI motif dönüşümü açık/kapalı
 
 // Her çizim: { id, dataUrl, x, y, width, height, rotation, timestamp }
 let drawings = [];
@@ -218,6 +220,8 @@ io.on('connection', (socket) => {
     const drawing = {
       id: Date.now() + '_' + Math.random().toString(36).substr(2, 6),
       dataUrl,
+      aiDataUrl: null,
+      aiStatus: 'none',
       ...placement,
       timestamp: Date.now()
     };
@@ -225,7 +229,7 @@ io.on('connection', (socket) => {
     drawings.push(drawing);
     saveData();
 
-    // Tüm host'lara yeni çizimi gönder
+    // Tüm host'lara yeni çizimi gönder (orijinal)
     io.emit('new-drawing', drawing);
     io.emit('drawing-count', drawings.length);
 
@@ -236,6 +240,53 @@ io.on('connection', (socket) => {
     }
 
     console.log(`🎨 Yeni çizim! Toplam: ${drawings.length}/${MAX_DRAWINGS}`);
+
+    // 🤖 AI motif dönüşümü (async — bloklamaz)
+    if (aiEnabled) {
+      drawing.aiStatus = 'processing';
+      io.emit('ai-processing', { drawingId: drawing.id });
+      io.emit('ai-status', getAIStatus());
+
+      transformToMotif(dataUrl)
+        .then(aiDataUrl => {
+          if (aiDataUrl) {
+            drawing.aiDataUrl = aiDataUrl;
+            drawing.aiStatus = 'done';
+            io.emit('ai-drawing-ready', {
+              id: drawing.id,
+              aiDataUrl,
+              x: drawing.x,
+              y: drawing.y,
+              width: drawing.width,
+              height: drawing.height
+            });
+            console.log(`🤖✅ AI motif hazır: ${drawing.id.substring(0, 15)}`);
+            saveData();
+          } else {
+            drawing.aiStatus = 'failed';
+            console.log(`🤖❌ AI motif başarısız: ${drawing.id.substring(0, 15)}`);
+          }
+          io.emit('ai-status', getAIStatus());
+        })
+        .catch(err => {
+          drawing.aiStatus = 'failed';
+          console.error('🤖❌ AI pipeline hatası:', err.message);
+          io.emit('ai-status', getAIStatus());
+        });
+    }
+  });
+
+  // 🤖 AI motif modu aç/kapa
+  socket.on('toggle-ai', (enabled) => {
+    aiEnabled = !!enabled;
+    console.log(`🤖 AI motif modu: ${aiEnabled ? 'AÇIK' : 'KAPALI'}`);
+    io.emit('ai-mode', aiEnabled);
+  });
+
+  // 🤖 AI durum sorgulama
+  socket.on('get-ai-status', () => {
+    socket.emit('ai-status', getAIStatus());
+    socket.emit('ai-mode', aiEnabled);
   });
 
   // 🧹 Manuel sıfırlama

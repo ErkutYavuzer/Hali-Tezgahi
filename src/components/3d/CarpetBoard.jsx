@@ -507,6 +507,100 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
     }, []);
 
     // =====================================================================
+    // 🤖 AI MOTİF MORPH ANİMASYONU
+    // =====================================================================
+    const morphToAIMotif = useCallback(({ id, aiDataUrl, x, y, width, height }) => {
+        const ctx = offscreenCtxRef.current;
+        if (!ctx || !aiDataUrl) return;
+
+        console.log(`🤖✨ AI morph başlıyor: ${id?.substring(0, 15)}`);
+
+        const aiImg = new Image();
+        aiImg.crossOrigin = 'anonymous';
+        aiImg.onload = () => {
+            // Aşama 1: Altın ışıltı pulsu (glow flash)
+            const glowFrames = 12;
+            let frame = 0;
+
+            const glowInterval = setInterval(() => {
+                if (frame >= glowFrames) {
+                    clearInterval(glowInterval);
+                    // Aşama 2: Crossfade — AI motifini üç adımda yerleştir
+                    startCrossfade(ctx, aiImg, x, y, width, height);
+                    return;
+                }
+
+                ctx.save();
+                // Pulsating golden glow
+                const intensity = Math.sin((frame / glowFrames) * Math.PI) * 0.6;
+                ctx.globalAlpha = intensity;
+                ctx.globalCompositeOperation = 'lighter';
+
+                // Altın renkli glow overlay
+                const gradient = ctx.createRadialGradient(
+                    x + width / 2, y + height / 2, 0,
+                    x + width / 2, y + height / 2, Math.max(width, height) * 0.7
+                );
+                gradient.addColorStop(0, 'rgba(255, 215, 0, 0.8)');
+                gradient.addColorStop(0.5, 'rgba(255, 165, 0, 0.4)');
+                gradient.addColorStop(1, 'rgba(255, 215, 0, 0)');
+                ctx.fillStyle = gradient;
+                ctx.fillRect(x - 10, y - 10, width + 20, height + 20);
+
+                ctx.restore();
+                needsUpdateRef.current = true;
+                frame++;
+            }, 60);
+        };
+        aiImg.onerror = (e) => {
+            console.error('❌ AI morph: resim yüklenemedi', e);
+        };
+        aiImg.src = aiDataUrl;
+    }, []);
+
+    // Crossfade: orijinal → AI motifi (üç adımlı geçiş)
+    const startCrossfade = useCallback((ctx, aiImg, x, y, width, height) => {
+        const fadeSteps = 8;
+        let step = 0;
+
+        const fadeInterval = setInterval(() => {
+            if (step >= fadeSteps) {
+                clearInterval(fadeInterval);
+                // Son adım: tam AI motifini çiz + iplik dokusu
+                ctx.save();
+                ctx.globalAlpha = 1.0;
+                ctx.globalCompositeOperation = 'source-over';
+                ctx.drawImage(aiImg, x, y, width, height);
+
+                // İplik overlay (hafif)
+                const THREAD_SIZE = 3;
+                ctx.globalAlpha = 0.04;
+                for (let ty = 0; ty < height; ty += THREAD_SIZE) {
+                    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                    ctx.fillRect(x, y + ty + THREAD_SIZE * 0.5, width, 0.5);
+                }
+                for (let tx = 0; tx < width; tx += THREAD_SIZE) {
+                    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                    ctx.fillRect(x + tx + THREAD_SIZE * 0.5, y, 0.5, height);
+                }
+                ctx.restore();
+                needsUpdateRef.current = true;
+                console.log(`✨ AI morph tamamlandı!`);
+                return;
+            }
+
+            const alpha = (step + 1) / fadeSteps;
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.drawImage(aiImg, x, y, width, height);
+            ctx.restore();
+            needsUpdateRef.current = true;
+            step++;
+        }, 80);
+    }, []);
+
+    // =====================================================================
     // SOCKET EVENTLERI
     // =====================================================================
     useEffect(() => {
@@ -516,14 +610,24 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
             console.log(`📦 initial-carpet geldi: ${drawings?.length || 0} çizim`);
             if (drawings && drawings.length > 0) {
                 drawings.forEach((drawing, i) => {
+                    // AI versiyonu varsa direkt onu kullan
+                    const renderDrawing = drawing.aiDataUrl
+                        ? { ...drawing, dataUrl: drawing.aiDataUrl }
+                        : drawing;
                     // Her çizim sırayla uçarak gelsin
-                    setTimeout(() => launchFlyingPixels(drawing), i * 800);
+                    setTimeout(() => launchFlyingPixels(renderDrawing), i * 800);
                 });
             }
         });
 
         socket.on('new-drawing', (drawing) => {
             launchFlyingPixels(drawing);
+        });
+
+        // 🤖 AI motifi hazır — morph animasyonu başlat
+        socket.on('ai-drawing-ready', (data) => {
+            console.log(`🤖 AI drawing ready:`, data.id?.substring(0, 15));
+            morphToAIMotif(data);
         });
 
         socket.on('carpet-reset', () => {
@@ -563,9 +667,10 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
         return () => {
             socket.off('initial-carpet');
             socket.off('new-drawing');
+            socket.off('ai-drawing-ready');
             socket.off('carpet-reset');
         };
-    }, [socket, drawWovenImage, launchFlyingPixels]);
+    }, [socket, drawWovenImage, launchFlyingPixels, morphToAIMotif]);
 
     // Frame loop: texture + shader time güncelle
     useFrame((state) => {

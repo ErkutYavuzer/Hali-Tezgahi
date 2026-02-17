@@ -54,6 +54,12 @@ export default function HostPage() {
   const [volumeLevel, setVolumeLevel] = useState(70);
   const serverIpRef = useRef('');
 
+  // 🤖 AI Motif State
+  const [aiEnabled, setAiEnabled] = useState(true);
+  const [aiStatus, setAiStatus] = useState({ activeRequests: 0, queueLength: 0 });
+  const [aiProcessingCount, setAiProcessingCount] = useState(0);
+  const [aiCompletedCount, setAiCompletedCount] = useState(0);
+
   const WEAVER_OPTIONS = [12, 20, 28, 40, 50, 60];
 
   // 🔊 İlk tıklamada ses sistemini başlat
@@ -88,6 +94,18 @@ export default function HostPage() {
     });
     newSocket.on('client-count', (count) => setConnectedClients(count));
     newSocket.on('max-drawings', (max) => setMaxDrawings(max));
+
+    // 🤖 AI eventleri
+    newSocket.on('ai-mode', (enabled) => setAiEnabled(enabled));
+    newSocket.on('ai-status', (status) => setAiStatus(status));
+    newSocket.on('ai-processing', () => setAiProcessingCount(c => c + 1));
+    newSocket.on('ai-drawing-ready', () => {
+      setAiCompletedCount(c => c + 1);
+      setAiProcessingCount(c => Math.max(0, c - 1));
+    });
+
+    // AI durumunu sor
+    newSocket.emit('get-ai-status');
 
     // 🎉 Halı tamamlandı!
     newSocket.on('carpet-complete', ({ total }) => {
@@ -378,6 +396,58 @@ export default function HostPage() {
                 {isMuted ? '0' : volumeLevel}%
               </span>
             </div>
+          </div>
+
+          {/* 🤖 AI MOTİF KONTROL */}
+          <div style={{
+            background: aiEnabled
+              ? 'rgba(139, 92, 246, 0.08)'
+              : 'rgba(255,255,255,0.04)',
+            borderRadius: 14,
+            padding: '12px 16px', marginBottom: 10,
+            border: aiEnabled
+              ? '1px solid rgba(139, 92, 246, 0.2)'
+              : '1px solid rgba(255,255,255,0.08)',
+            transition: 'all 0.3s ease',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 18 }}>🤖</span>
+                <span style={{ fontSize: 13, fontWeight: 600, letterSpacing: 0.5 }}>AI Motif</span>
+              </div>
+              <button onClick={() => {
+                const newVal = !aiEnabled;
+                setAiEnabled(newVal);
+                socket?.emit('toggle-ai', newVal);
+              }} style={{
+                width: 44, height: 24, borderRadius: 12, cursor: 'pointer',
+                background: aiEnabled
+                  ? 'linear-gradient(135deg, #8b5cf6, #a855f7)'
+                  : 'rgba(255,255,255,0.1)',
+                border: 'none', position: 'relative',
+                transition: 'all 0.3s ease',
+              }}>
+                <div style={{
+                  width: 18, height: 18, borderRadius: '50%',
+                  background: '#fff', position: 'absolute',
+                  top: 3,
+                  left: aiEnabled ? 23 : 3,
+                  transition: 'left 0.3s ease',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+                }} />
+              </button>
+            </div>
+            {aiEnabled && (
+              <div style={{ fontSize: 11, opacity: 0.5, lineHeight: 1.4 }}>
+                {
+                  aiStatus.activeRequests > 0
+                    ? `✨ ${aiStatus.activeRequests} motif işleniyor${aiStatus.queueLength > 0 ? ` (+${aiStatus.queueLength} kuyrukta)` : ''}...`
+                    : aiCompletedCount > 0
+                      ? `✅ ${aiCompletedCount} motif dönüştürüldü`
+                      : 'Çizimler otomatik kilim motifine dönüştürülecek'
+                }
+              </div>
+            )}
           </div>
 
           {/* 📸 HALIYI İNDİR */}
