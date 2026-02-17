@@ -1046,23 +1046,28 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
         socket.on('initial-carpet', ({ drawings }) => {
             console.log(`📦 initial-carpet geldi: ${drawings?.length || 0} çizim`);
             if (drawings && drawings.length > 0) {
-                drawings.forEach((drawing, i) => {
-                    // HER ZAMAN orijinal çizimi göster (AI asla tam üstüne yazılmaz)
-                    setTimeout(() => launchFlyingPixels(drawing), i * 800);
+                const ctx = offscreenCtxRef.current;
 
-                    // AI versiyonu varsa, çizim yerleştikten sonra overlay olarak uygula
-                    if (drawing.aiDataUrl) {
+                drawings.forEach((drawing, i) => {
+                    if (drawing.aiDataUrl && ctx) {
+                        // ✅ AI motifi HAZIR — direkt çiz (animasyon yok, AI'ya tekrar gitmez)
                         setTimeout(() => {
-                            morphToAIMotif({
-                                id: drawing.id,
-                                aiDataUrl: drawing.aiDataUrl,
-                                userName: drawing.userName,
-                                x: drawing.x,
-                                y: drawing.y,
-                                width: drawing.width,
-                                height: drawing.height
-                            });
-                        }, i * 800 + 3000); // Çizim yerleştikten 3sn sonra AI blend
+                            const aiImg = new Image();
+                            aiImg.crossOrigin = 'anonymous';
+                            aiImg.onload = () => {
+                                ctx.save();
+                                ctx.globalAlpha = 1.0;
+                                ctx.drawImage(aiImg, drawing.x, drawing.y, drawing.width, drawing.height);
+                                ctx.restore();
+                                renderWovenName(ctx, drawing.userName, drawing.x, drawing.y, drawing.width, drawing.height);
+                                needsUpdateRef.current = true;
+                                console.log(`📦 AI motif direkt çizildi: ${drawing.id?.substring(0, 15)}`);
+                            };
+                            aiImg.src = drawing.aiDataUrl;
+                        }, i * 100); // Hızlı sıralı yükleme
+                    } else {
+                        // ⏳ AI motifi yok — flying pixels ile göster
+                        setTimeout(() => launchFlyingPixels(drawing), i * 800);
                     }
                 });
             }
@@ -1118,7 +1123,7 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
             socket.off('ai-drawing-ready');
             socket.off('carpet-reset');
         };
-    }, [socket, drawWovenImage, launchFlyingPixels, morphToAIMotif]);
+    }, [socket, drawWovenImage, launchFlyingPixels, morphToAIMotif, renderWovenName]);
 
     // Frame loop: texture + shader time güncelle
     useFrame((state) => {
