@@ -331,115 +331,146 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
     }, []);
 
     /**
-     * 🎨 applyWovenEnhancement — Çizimi "halıya dokunmuş" estetiğine dönüştürür
+     * 🎨 applyWovenEnhancement — Çizimi PROFESYONEL halı motifine dönüştürür
      * 
-     * Uygulanan efektler (sırasıyla):
-     * 1. Pikselizasyon (mozaik) — her PIXEL_SIZE×PIXEL_SIZE blok aynı renk
-     * 2. Renk doygunluğu artırma — %40 saturation boost
-     * 3. Kontrast artırma — %25 contrast boost
-     * 4. Kilim paleti quantization — en yakın 12 geleneksel renge snap
-     * 5. İplik dokusu overlay — yatay + dikey ince çizgiler
-     * 6. Dekoratif kilim çerçevesi
-     * 
-     * Orijinal şekil %100 korunur, sadece "medium" değişir.
+     * Gerçek bir kilime dokunmuş hissi:
+     * 1. Şeffaf alanlar krem zemin ile doldurulur (gerçek halıda boşluk olmaz)
+     * 2. Kenar algılama ile motif kontürleri belirginleştirilir
+     * 3. Güçlü renk doygunluğu & kontrast → canlı kilim renkleri
+     * 4. Cross-stitch (çapraz iplik) efekti → her blok gerçek ilmek gibi
+     * 5. Çift katmanlı dekoratif kilim çerçevesi
      */
     const applyWovenEnhancement = useCallback((ctx, x, y, width, height) => {
-        // 1️⃣ Orijinali tmpCanvas'a kopyala
-        const tmpCanvas = document.createElement('canvas');
-        tmpCanvas.width = width;
-        tmpCanvas.height = height;
-        const tmpCtx = tmpCanvas.getContext('2d');
+        const STITCH = 6; // İlmek boyutu — gerçek halı hissine yakın
 
-        // Mevcut canvas'tan bu bölgeyi al
+        // 1️⃣ Source data al
         const sourceData = ctx.getImageData(x, y, width, height);
-        tmpCtx.putImageData(sourceData, 0, 0);
-
-        // 2️⃣ Piksel piksel işle: mozaik + renk enhancement
-        const imageData = tmpCtx.getImageData(0, 0, width, height);
-        const pixels = imageData.data;
+        const src = sourceData.data;
         const enhanced = new ImageData(width, height);
         const out = enhanced.data;
 
-        for (let by = 0; by < height; by += PIXEL_SIZE) {
-            for (let bx = 0; bx < width; bx += PIXEL_SIZE) {
-                // Blok içindeki piksellerin ortalamasını al
-                let totalR = 0, totalG = 0, totalB = 0, totalA = 0, count = 0;
+        // 2️⃣ Önce kenar algılama için gradient map oluştur
+        const edgeMap = new Float32Array(width * height);
+        for (let py = 1; py < height - 1; py++) {
+            for (let px = 1; px < width - 1; px++) {
+                const idx = (py * width + px) * 4;
+                const idxL = (py * width + px - 1) * 4;
+                const idxR = (py * width + px + 1) * 4;
+                const idxU = ((py - 1) * width + px) * 4;
+                const idxD = ((py + 1) * width + px) * 4;
 
-                for (let dy = 0; dy < PIXEL_SIZE && (by + dy) < height; dy++) {
-                    for (let dx = 0; dx < PIXEL_SIZE && (bx + dx) < width; dx++) {
+                const gx = Math.abs(
+                    (src[idxR] + src[idxR + 1] + src[idxR + 2]) -
+                    (src[idxL] + src[idxL + 1] + src[idxL + 2])
+                );
+                const gy = Math.abs(
+                    (src[idxD] + src[idxD + 1] + src[idxD + 2]) -
+                    (src[idxU] + src[idxU + 1] + src[idxU + 2])
+                );
+                edgeMap[py * width + px] = Math.min(1, Math.sqrt(gx * gx + gy * gy) / 200);
+            }
+        }
+
+        // 3️⃣ Blok bazlı işleme: mozaik + renk enhancement + cross-stitch
+        for (let by = 0; by < height; by += STITCH) {
+            for (let bx = 0; bx < width; bx += STITCH) {
+                let totalR = 0, totalG = 0, totalB = 0, totalA = 0;
+                let count = 0, edgeStrength = 0;
+                const bw = Math.min(STITCH, width - bx);
+                const bh = Math.min(STITCH, height - by);
+
+                // Blok ortalaması + kenar gücü
+                for (let dy = 0; dy < bh; dy++) {
+                    for (let dx = 0; dx < bw; dx++) {
                         const pi = ((by + dy) * width + (bx + dx)) * 4;
-                        totalR += pixels[pi];
-                        totalG += pixels[pi + 1];
-                        totalB += pixels[pi + 2];
-                        totalA += pixels[pi + 3];
+                        totalR += src[pi];
+                        totalG += src[pi + 1];
+                        totalB += src[pi + 2];
+                        totalA += src[pi + 3];
+                        edgeStrength += edgeMap[(by + dy) * width + (bx + dx)];
                         count++;
                     }
                 }
 
-                let avgR = Math.round(totalR / count);
-                let avgG = Math.round(totalG / count);
-                let avgB = Math.round(totalB / count);
-                const avgA = Math.round(totalA / count);
+                let avgR = totalR / count;
+                let avgG = totalG / count;
+                let avgB = totalB / count;
+                const avgA = totalA / count;
+                const avgEdge = edgeStrength / count;
 
-                // Şeffaf pikselleri atla
-                if (avgA < 20) {
-                    for (let dy = 0; dy < PIXEL_SIZE && (by + dy) < height; dy++) {
-                        for (let dx = 0; dx < PIXEL_SIZE && (bx + dx) < width; dx++) {
-                            const oi = ((by + dy) * width + (bx + dx)) * 4;
-                            out[oi] = pixels[oi];
-                            out[oi + 1] = pixels[oi + 1];
-                            out[oi + 2] = pixels[oi + 2];
-                            out[oi + 3] = pixels[oi + 3];
-                        }
-                    }
-                    continue;
+                // 🧶 Şeffaf alanları krem zemin ile doldur (gerçek halıda boşluk yok)
+                const isBackground = avgA < 40;
+                if (isBackground) {
+                    // Krem/fildişi zemin rengi — hafif ton varyasyonu
+                    const variation = ((bx * 7 + by * 13) % 20) - 10;
+                    avgR = 235 + variation;
+                    avgG = 225 + variation;
+                    avgB = 205 + variation;
+                } else {
+                    // 🎨 Renk doygunluğu artır (+%60) — kilim renkleri canlıdır
+                    let [h, s, l] = rgbToHsl(avgR, avgG, avgB);
+                    s = Math.min(1.0, s * 1.6);
+                    // Kontrast artır (+%35)
+                    l = 0.5 + (l - 0.5) * 1.35;
+                    l = Math.max(0.08, Math.min(0.92, l));
+                    [avgR, avgG, avgB] = hslToRgb(h, s, l);
+
+                    // 🎯 Kilim paleti quantization — %50 orijinal + %50 palette
+                    const [kr, kg, kb] = nearestKilimColor(avgR, avgG, avgB);
+                    avgR = Math.round(avgR * 0.5 + kr * 0.5);
+                    avgG = Math.round(avgG * 0.5 + kg * 0.5);
+                    avgB = Math.round(avgB * 0.5 + kb * 0.5);
                 }
 
-                // Renk doygunluğu artır (+%40)
-                let [h, s, l] = rgbToHsl(avgR, avgG, avgB);
-                s = Math.min(1.0, s * 1.4);
-                // Kontrast artır (+%25)
-                l = 0.5 + (l - 0.5) * 1.25;
-                l = Math.max(0, Math.min(1, l));
-                [avgR, avgG, avgB] = hslToRgb(h, s, l);
-
-                // Kilim paleti quantization (hafif — %60 orijinal + %40 palette)
-                const [kr, kg, kb] = nearestKilimColor(avgR, avgG, avgB);
-                avgR = Math.round(avgR * 0.6 + kr * 0.4);
-                avgG = Math.round(avgG * 0.6 + kg * 0.4);
-                avgB = Math.round(avgB * 0.6 + kb * 0.4);
-
-                // Tüm bloğu bu renkle doldur (mozaik efekti)
-                for (let dy = 0; dy < PIXEL_SIZE && (by + dy) < height; dy++) {
-                    for (let dx = 0; dx < PIXEL_SIZE && (bx + dx) < width; dx++) {
+                // 🧵 Her piksele cross-stitch dokusu uygula
+                for (let dy = 0; dy < bh; dy++) {
+                    for (let dx = 0; dx < bw; dx++) {
                         const oi = ((by + dy) * width + (bx + dx)) * 4;
-                        out[oi] = avgR;
-                        out[oi + 1] = avgG;
-                        out[oi + 2] = avgB;
-                        out[oi + 3] = avgA;
+
+                        let r = avgR, g = avgG, b = avgB;
+
+                        // Cross-stitch texture: çapraz iplik izleri
+                        // Her bloğun içinde "\" ve "/" yönünde hafif renk değişimi
+                        const diagA = (dx + dy) / (bw + bh - 2); // 0..1 köşegen
+                        const diagB = (dx + (bh - 1 - dy)) / (bw + bh - 2);
+                        const stitchTexture = Math.sin(diagA * Math.PI) * 0.08 +
+                            Math.sin(diagB * Math.PI) * 0.04;
+
+                        // Blok kenarlarında koyu çizgi (ilmek arası oluk)
+                        const onEdge = (dx === 0 || dy === 0 || dx === bw - 1 || dy === bh - 1);
+                        const edgeDarken = onEdge ? 0.82 : 1.0;
+
+                        // Kenar algılamada bulunan kontur hatlarını koyulaştır
+                        const contourDarken = 1.0 - avgEdge * 0.4;
+
+                        const factor = edgeDarken * contourDarken * (1 + stitchTexture);
+                        r = Math.max(0, Math.min(255, Math.round(r * factor)));
+                        g = Math.max(0, Math.min(255, Math.round(g * factor)));
+                        b = Math.max(0, Math.min(255, Math.round(b * factor)));
+
+                        out[oi] = r;
+                        out[oi + 1] = g;
+                        out[oi + 2] = b;
+                        out[oi + 3] = 255; // Halıda şeffaflık yok
                     }
                 }
             }
         }
 
-        // 3️⃣ Enhanced sonucu canvas'a yaz
+        // 4️⃣ Enhanced sonucu canvas'a yaz
         ctx.putImageData(enhanced, x, y);
 
-        // 4️⃣ İplik dokusu overlay — bloklar arası ince çizgiler (dokuma grid)
+        // 5️⃣ Warp/weft iplik grid — her STITCH aralığında çok ince çizgiler
         ctx.save();
-        ctx.globalAlpha = 0.12;
-        ctx.strokeStyle = 'rgba(61, 43, 31, 0.35)';
+        ctx.strokeStyle = 'rgba(80, 50, 30, 0.08)';
         ctx.lineWidth = 0.5;
-
-        // Yatay iplik çizgileri
-        for (let ty = 0; ty < height; ty += PIXEL_SIZE) {
+        for (let ty = STITCH; ty < height; ty += STITCH) {
             ctx.beginPath();
             ctx.moveTo(x, y + ty);
             ctx.lineTo(x + width, y + ty);
             ctx.stroke();
         }
-        // Dikey iplik çizgileri
-        for (let tx = 0; tx < width; tx += PIXEL_SIZE) {
+        for (let tx = STITCH; tx < width; tx += STITCH) {
             ctx.beginPath();
             ctx.moveTo(x + tx, y);
             ctx.lineTo(x + tx, y + height);
@@ -447,86 +478,93 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
         }
         ctx.restore();
 
-        // 5️⃣ Dekoratif kilim çerçevesi
-        const bw = Math.max(4, Math.min(10, Math.min(width, height) * 0.03));
-
+        // 6️⃣ Profesyonel çift katmanlı kilim çerçevesi
+        const borderW = Math.max(6, Math.min(14, Math.min(width, height) * 0.04));
         ctx.save();
-        // Dış çerçeve — koyu border
-        ctx.strokeStyle = 'rgba(92, 26, 10, 0.7)'; // bordo
-        ctx.lineWidth = bw;
-        ctx.strokeRect(x + bw / 2, y + bw / 2, width - bw, height - bw);
 
-        // İç çerçeve — altın
-        ctx.strokeStyle = 'rgba(200, 169, 81, 0.5)'; // altın
-        ctx.lineWidth = Math.max(1.5, bw * 0.4);
-        ctx.strokeRect(x + bw * 1.8, y + bw * 1.8, width - bw * 3.6, height - bw * 3.6);
+        // Dış çerçeve — koyu bordo
+        ctx.strokeStyle = '#5c1a0a';
+        ctx.lineWidth = borderW;
+        ctx.strokeRect(x + borderW / 2, y + borderW / 2, width - borderW, height - borderW);
 
-        // Köşe süsleri — küçük kilim motifleri (baklava dilimi)
-        const cs = Math.max(6, bw * 2);
-        ctx.fillStyle = 'rgba(200, 169, 81, 0.6)';
+        // Orta çerçeve — altın şerit
+        const midW = borderW * 0.5;
+        ctx.strokeStyle = '#c8a951';
+        ctx.lineWidth = midW;
+        const inset = borderW + midW / 2;
+        ctx.strokeRect(x + inset, y + inset, width - inset * 2, height - inset * 2);
 
-        // Sol üst — baklava
-        ctx.beginPath();
-        ctx.moveTo(x + bw, y + bw + cs / 2);
-        ctx.lineTo(x + bw + cs / 2, y + bw);
-        ctx.lineTo(x + bw + cs, y + bw + cs / 2);
-        ctx.lineTo(x + bw + cs / 2, y + bw + cs);
-        ctx.closePath();
-        ctx.fill();
+        // İç çerçeve — ince lacivert
+        ctx.strokeStyle = '#1a3a6b';
+        ctx.lineWidth = Math.max(1.5, borderW * 0.25);
+        const innerInset = borderW + midW + 2;
+        ctx.strokeRect(x + innerInset, y + innerInset, width - innerInset * 2, height - innerInset * 2);
 
-        // Sağ üst
-        ctx.beginPath();
-        ctx.moveTo(x + width - bw - cs, y + bw + cs / 2);
-        ctx.lineTo(x + width - bw - cs / 2, y + bw);
-        ctx.lineTo(x + width - bw, y + bw + cs / 2);
-        ctx.lineTo(x + width - bw - cs / 2, y + bw + cs);
-        ctx.closePath();
-        ctx.fill();
-
-        // Sol alt
-        ctx.beginPath();
-        ctx.moveTo(x + bw, y + height - bw - cs / 2);
-        ctx.lineTo(x + bw + cs / 2, y + height - bw - cs);
-        ctx.lineTo(x + bw + cs, y + height - bw - cs / 2);
-        ctx.lineTo(x + bw + cs / 2, y + height - bw);
-        ctx.closePath();
-        ctx.fill();
-
-        // Sağ alt
-        ctx.beginPath();
-        ctx.moveTo(x + width - bw - cs, y + height - bw - cs / 2);
-        ctx.lineTo(x + width - bw - cs / 2, y + height - bw - cs);
-        ctx.lineTo(x + width - bw, y + height - bw - cs / 2);
-        ctx.lineTo(x + width - bw - cs / 2, y + height - bw);
-        ctx.closePath();
-        ctx.fill();
-
-        // Kenar süsleri — üst ve alt kenarda küçük üçgenler
-        ctx.fillStyle = 'rgba(196, 30, 58, 0.4)'; // kırmızı
-        const triSize = Math.max(3, bw * 0.8);
-        const triSpacing = triSize * 3;
-        for (let tx = x + bw * 3 + cs; tx < x + width - bw * 3 - cs; tx += triSpacing) {
-            // Üst kenar üçgenleri
+        // 🔶 Köşe motifleri — çift baklava dilimi
+        const cs = borderW * 1.8;
+        const corners = [
+            [x + borderW + cs / 2, y + borderW + cs / 2],
+            [x + width - borderW - cs / 2, y + borderW + cs / 2],
+            [x + borderW + cs / 2, y + height - borderW - cs / 2],
+            [x + width - borderW - cs / 2, y + height - borderW - cs / 2],
+        ];
+        for (const [cx, cy] of corners) {
+            // Dış baklava — altın
+            ctx.fillStyle = '#c8a951';
             ctx.beginPath();
-            ctx.moveTo(tx, y + bw * 1.2);
-            ctx.lineTo(tx + triSize / 2, y + bw * 1.2 + triSize);
-            ctx.lineTo(tx - triSize / 2, y + bw * 1.2 + triSize);
+            ctx.moveTo(cx, cy - cs / 2);
+            ctx.lineTo(cx + cs / 2, cy);
+            ctx.lineTo(cx, cy + cs / 2);
+            ctx.lineTo(cx - cs / 2, cy);
             ctx.closePath();
             ctx.fill();
-            // Alt kenar üçgenleri (ters)
+            // İç baklava — kırmızı
+            ctx.fillStyle = '#c41e3a';
+            const ics = cs * 0.45;
             ctx.beginPath();
-            ctx.moveTo(tx, y + height - bw * 1.2);
-            ctx.lineTo(tx + triSize / 2, y + height - bw * 1.2 - triSize);
-            ctx.lineTo(tx - triSize / 2, y + height - bw * 1.2 - triSize);
+            ctx.moveTo(cx, cy - ics / 2);
+            ctx.lineTo(cx + ics / 2, cy);
+            ctx.lineTo(cx, cy + ics / 2);
+            ctx.lineTo(cx - ics / 2, cy);
             ctx.closePath();
             ctx.fill();
         }
 
-        ctx.restore();
+        // 👁️ Kenar göz motifleri — üst ve alt
+        const eyeSize = borderW * 0.6;
+        const eyeSpacing = eyeSize * 5;
+        ctx.fillStyle = '#c8a951';
+        for (let ex = x + innerInset + cs + eyeSpacing; ex < x + width - innerInset - cs; ex += eyeSpacing) {
+            // Üst kenar
+            drawEye(ctx, ex, y + borderW * 0.5, eyeSize);
+            // Alt kenar
+            drawEye(ctx, ex, y + height - borderW * 0.5, eyeSize);
+        }
+        // Sol ve sağ kenar
+        for (let ey = y + innerInset + cs + eyeSpacing; ey < y + height - innerInset - cs; ey += eyeSpacing) {
+            drawEye(ctx, x + borderW * 0.5, ey, eyeSize);
+            drawEye(ctx, x + width - borderW * 0.5, ey, eyeSize);
+        }
 
+        ctx.restore();
         needsUpdateRef.current = true;
     }, [rgbToHsl, hslToRgb, nearestKilimColor]);
 
+
+    // 👁 Göz motifi helper — kilim çerçeve kenarlarındaki "nazarlık" motifi
+    const drawEye = (ctx, cx, cy, size) => {
+        // Dış elips
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, size, size * 0.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // İç nokta — koyu
+        ctx.save();
+        ctx.fillStyle = '#1a1a2e';
+        ctx.beginPath();
+        ctx.arc(cx, cy, size * 0.25, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    };
 
     // ✍️ Motife dokuma estetiğinde isim yazma
     const renderWovenName = useCallback((ctx, name, x, y, width, height) => {
