@@ -118,12 +118,11 @@ function createCarpetMaterial(drawingTexture, normalMap, bumpMap) {
     mat.onBeforeCompile = (shader) => {
         shader.uniforms.uTime = { value: 0 };
 
-        // Vertex shader: yüzey bozulması (fiber + knot displacement)
+        // Vertex shader: hafif yüzey kabartması
         shader.vertexShader = `
             uniform float uTime;
             varying float vFiber;
             varying vec2 vHighUv;
-            varying vec2 vRawUv;
         ` + shader.vertexShader;
 
         shader.vertexShader = shader.vertexShader.replace(
@@ -131,27 +130,22 @@ function createCarpetMaterial(drawingTexture, normalMap, bumpMap) {
             `
             #include <begin_vertex>
             
-            vRawUv = uv;
-            // Yüksek frekanslı UV (knot-level detail)
-            vHighUv = uv * vec2(32.0, 52.0);
+            vHighUv = uv * vec2(20.0, 32.0);
             
-            // İplik fiber noise — daha belirgin düğüm dokusu
-            float fiber = sin(uv.x * 200.0) * cos(uv.y * 200.0) * 0.6
-                        + sin(uv.x * 80.0 + uv.y * 60.0) * 0.4
-                        + sin(uv.x * 40.0 - uv.y * 30.0) * 0.2;
+            // Çok hafif fiber doku
+            float fiber = sin(uv.x * 120.0) * cos(uv.y * 120.0) * 0.3;
             vFiber = fiber;
             
-            // Halı yüzey kabartması — düğümler 3D hissi verir
+            // Minimal yüzey kabartması
             vec3 dispNormal = normalize(normal);
-            transformed += dispNormal * fiber * 0.025;
+            transformed += dispNormal * fiber * 0.008;
             `
         );
 
-        // Fragment shader: gerçekçi halı dokuma efektleri
+        // Fragment shader: minimal kumaş hissi
         shader.fragmentShader = `
             varying float vFiber;
             varying vec2 vHighUv;
-            varying vec2 vRawUv;
         ` + shader.fragmentShader;
 
         shader.fragmentShader = shader.fragmentShader.replace(
@@ -159,57 +153,19 @@ function createCarpetMaterial(drawingTexture, normalMap, bumpMap) {
             `
             #include <dithering_fragment>
             
-            // ═══ WARP-WEFT GRID ═══
-            // Yatay atkı iplikleri (weft)
-            float weftLine = smoothstep(0.42, 0.5, fract(vHighUv.y * 1.0));
-            float weftDark = weftLine * 0.06;
+            // ═══ ÇOK HAFİF KUMAŞ DOKUSU ═══
+            // Neredeyse görünmez iplik hissi
+            float fiberDetail = sin(vHighUv.x * 20.0) * cos(vHighUv.y * 20.0) * 0.015;
+            gl_FragColor.rgb += fiberDetail;
             
-            // Dikey çözgü iplikleri (warp)
-            float warpLine = smoothstep(0.44, 0.5, fract(vHighUv.x * 0.8));
-            float warpDark = warpLine * 0.04;
-            
-            // Kesişim gölgesi
-            float intersection = weftLine * warpLine * 0.05;
-            gl_FragColor.rgb -= (weftDark + warpDark + intersection);
-            
-            // ═══ İPLİK FİBER DETAYI ═══
-            float fiberDetail = sin(vHighUv.x * 30.0) * cos(vHighUv.y * 30.0) * 0.06;
-            float fiberCross = sin(vHighUv.x * 15.0 + vHighUv.y * 15.0) * 0.03;
-            // İplik büklüm yönü alternansı
-            float twistDir = step(0.5, fract(vHighUv.y * 0.5));
-            float fiberTwist = mix(
-                sin(vHighUv.x * 40.0 + vHighUv.y * 20.0),
-                sin(vHighUv.x * 40.0 - vHighUv.y * 20.0),
-                twistDir
-            ) * 0.025;
-            
-            gl_FragColor.rgb += fiberDetail + fiberCross + fiberTwist;
-            
-            // ═══ PER-KNOT RENK VARYASYONU ═══
-            // Her düğüm hafifçe farklı ton (el yapımı hissi)
-            float knotVar = sin(vHighUv.x * 8.0) * sin(vHighUv.y * 8.0) * 0.04;
-            gl_FragColor.rgb *= (1.0 + knotVar);
-            
-            // ═══ ABRASH SİMÜLASYONU (GPU) ═══
-            // Yatay bantlarda hafif renk kayması
-            float abrash = sin(vRawUv.y * 60.0 + 3.14) * 0.03;
-            gl_FragColor.rgb += abrash;
-            
-            // ═══ RENK CANLANDIRMA ═══
+            // ═══ HAFİF RENK İYİLEŞTİRME ═══
             float luminance = dot(gl_FragColor.rgb, vec3(0.299, 0.587, 0.114));
-            vec3 saturated = mix(vec3(luminance), gl_FragColor.rgb, 1.6);
-            gl_FragColor.rgb = saturated * 1.3;
-            
-            // ═══ PİLE DİRECTİON EFEKTİ ═══
-            // Halı tüyü yönüne göre renk kayması (bakış açısı etkisi)
-            float pileAngle = dot(normalize(vViewPosition), vec3(0.0, 0.0, 1.0));
-            float pileShift = mix(0.92, 1.08, clamp(pileAngle, 0.0, 1.0));
-            gl_FragColor.rgb *= pileShift;
+            vec3 saturated = mix(vec3(luminance), gl_FragColor.rgb, 1.3);
+            gl_FragColor.rgb = saturated * 1.1;
             
             // ═══ RIM IŞIK ═══
-            // Kenar parlaması — yün tüylerini simüle eder
             float rim = 1.0 - max(dot(normalize(vViewPosition), normalize(vNormal)), 0.0);
-            gl_FragColor.rgb += vec3(0.04, 0.035, 0.03) * pow(rim, 2.5);
+            gl_FragColor.rgb += vec3(0.03, 0.025, 0.02) * pow(rim, 3.0);
             `
         );
 
