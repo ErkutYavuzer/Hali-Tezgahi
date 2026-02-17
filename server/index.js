@@ -283,7 +283,7 @@ app.get('/carpet-image', (req, res) => {
   const imgPath = path.join(__dirname, 'carpet_latest.png');
   if (fs.existsSync(imgPath)) {
     res.setHeader('Content-Type', 'image/png');
-    res.setHeader('Content-Disposition', 'attachment; filename="hali_tezgahi.png"');
+    res.setHeader('Content-Disposition', 'attachment; filename="dijital_motif.png"');
     res.sendFile(imgPath);
   } else {
     res.status(404).send('Henüz halı görüntüsü yok.');

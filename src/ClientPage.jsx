@@ -490,11 +490,11 @@ export default function ClientPage() {
             backgroundSize: '200% auto',
             WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
             animation: 'shimmer 3s linear infinite',
-          }}>🧶 DOKUMA TEZGAHı</h1>
+          }}>🎨 DİJİTAL MOTİF ATÖLYESİ</h1>
           <p style={{
             color: 'rgba(255,255,255,0.35)', margin: '2px 0 0', fontSize: '10px',
             letterSpacing: '2px', fontWeight: '500',
-          }}>KOLEKTİF SANAT ENSTALASYoNU</p>
+          }}>İNTERAKTİF KOLEKTİF SANAT DENEYİMİ</p>
         </div>
         <div style={{
           display: 'flex', alignItems: 'center', gap: '8px',

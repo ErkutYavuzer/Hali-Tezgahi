@@ -40,7 +40,7 @@ export default function DownloadPage() {
     const handleDownload = () => {
         if (!imageUrl) return;
         const link = document.createElement('a');
-        link.download = `hali_tezgahi_${Date.now()}.png`;
+        link.download = `dijital_motif_${Date.now()}.png`;
         link.href = imageUrl;
         link.click();
     };
@@ -67,10 +67,10 @@ export default function DownloadPage() {
                 WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
                 backgroundSize: '300% 100%',
                 animation: 'shimmer 3s linear infinite',
-            }}>HALI TEZGAHI</h1>
+            }}>DİJİTAL MOTİF ATÖLYESİ</h1>
 
             <p style={{ fontSize: 14, opacity: 0.5, margin: '0 0 30px 0', letterSpacing: 2 }}>
-                KOLEKTİF SANAT ESERİ
+                İNTERAKTİF KOLEKTİF SANAT DENEYİMİ
             </p>
 
             {loading && (
@@ -100,7 +100,7 @@ export default function DownloadPage() {
                         border: '2px solid rgba(255,215,0,0.3)',
                         marginBottom: 24, maxWidth: 500, margin: '0 auto 24px',
                     }}>
-                        <img src={imageUrl} alt="Halı Tezgahı" style={{
+                        <img src={imageUrl} alt="Dijital Motif Atölyesi" style={{
                             width: '100%', display: 'block',
                         }} />
                     </div>
@@ -114,7 +114,7 @@ export default function DownloadPage() {
                         transition: 'all 0.3s', letterSpacing: 1,
                         width: '90%', maxWidth: 300,
                     }}>
-                        📥 HALIYI İNDİR
+                        📥 ESERİ İNDİR
                     </button>
 
                     <div style={{

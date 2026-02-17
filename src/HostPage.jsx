@@ -178,11 +178,11 @@ export default function HostPage() {
 
         <group position={[0, 58, 0]}>
           <Text fontSize={6} color="#222" anchorX="center" anchorY="middle" letterSpacing={0.25}>
-            HALI TEZGAHI
+            DİJİTAL MOTİF ATÖLYESİ
             <meshStandardMaterial color="#d4af37" metalness={0.9} roughness={0.1} />
           </Text>
           <Text position={[0, -5, 0]} fontSize={1.4} color="#555" anchorX="center" anchorY="middle" letterSpacing={0.4}>
-            İNTERAKTİF KOLEKTİF SANAT ENSTALASYONU
+            İNTERAKTİF KOLEKTİF SANAT DENEYİMİ
           </Text>
         </group>
 
@@ -245,7 +245,7 @@ export default function HostPage() {
               fontSize: 22, fontWeight: 800, letterSpacing: -1,
               background: 'linear-gradient(135deg, #ffd700, #ff6b35)',
               WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-            }}>HALI TEZGAHI</div>
+            }}>DİJİTAL MOTİF ATÖLYESİ</div>
           </div>
 
           {/* DURUM KARTLARI */}
@@ -385,7 +385,7 @@ export default function HostPage() {
             const canvas = document.querySelector('canvas');
             if (canvas) {
               const link = document.createElement('a');
-              link.download = `hali_tezgahi_${Date.now()}.png`;
+              link.download = `dijital_motif_${Date.now()}.png`;
               link.href = canvas.toDataURL('image/png');
               link.click();
             }
@@ -397,7 +397,7 @@ export default function HostPage() {
             transition: 'all 0.3s ease', letterSpacing: 1, marginBottom: 10,
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
           }}>
-            📸 HALIYI İNDİR
+            📸 ESERİ İNDİR
           </button>
 
           {/* 📱 İNDİRME QR KODU — Sadece halı tamamlandığında */}
@@ -526,7 +526,7 @@ export default function HostPage() {
               WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
               backgroundSize: '300% 100%',
               animation: 'shimmer 3s linear infinite',
-            }}>HALI TAMAMLANDI!</h1>
+            }}>MOTİF TAMAMLANDI!</h1>
             <p style={{
               fontSize: 18, color: 'rgba(255,255,255,0.7)', margin: '0 0 30px 0',
               fontFamily: "'Inter', sans-serif",
@@ -556,7 +556,7 @@ export default function HostPage() {
                 const canvas = document.querySelector('canvas');
                 if (canvas) {
                   const link = document.createElement('a');
-                  link.download = `hali_tezgahi_${Date.now()}.png`;
+                  link.download = `dijital_motif_${Date.now()}.png`;
                   link.href = canvas.toDataURL('image/png');
                   link.click();
                 }
