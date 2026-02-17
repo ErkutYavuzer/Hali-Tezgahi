@@ -1,14 +1,14 @@
 export const CONFIG = {
-    // Halı boyutları (3D birim)
-    CARPET_WIDTH: 24,   // Eski: 6 * 4 = 24
-    CARPET_DEPTH: 40,   // Eski: 10 * 4 = 40
+    // Halı boyutları (3D birim) — LANDSCAPE (yatay)
+    CARPET_WIDTH: 40,   // Geniş kenar (ekranın yatay ekseni)
+    CARPET_DEPTH: 24,   // Kısa kenar (ekranın dikey ekseni)
 
     // Çizim canvas çözünürlüğü
     CANVAS_RESOLUTION: 1280,
 
-    // Halı texture çözünürlüğü (host tarafı — 4224x1536 ekran için optimize)
-    TEXTURE_WIDTH: 2534,
-    TEXTURE_HEIGHT: 4224,      // 24:40 oran, ekranın geniş kenarına eşit
+    // Halı texture çözünürlüğü (host tarafı — 4224x1536 ekran, landscape)
+    TEXTURE_WIDTH: 4224,
+    TEXTURE_HEIGHT: 2534,      // 40:24 oran, landscape
 
     // Çizim yerleştirme
     DRAWING_SCALE: 0.35,       // Motifler daha büyük ve detaylı

@@ -261,7 +261,7 @@ export default function HostPage() {
         <color attach="background" args={['#050508']} />
         <fog attach="fog" args={['#050508', 150, 400]} />
 
-        <PerspectiveCamera makeDefault position={[0, 24, 70]} fov={44} />
+        <PerspectiveCamera makeDefault position={[0, 24, 55]} fov={50} />
         <OrbitControls
           maxPolarAngle={Math.PI / 1.8} minPolarAngle={Math.PI / 5}
           minDistance={30} maxDistance={100} target={[0, 22, 0]}
