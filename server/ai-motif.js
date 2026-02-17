@@ -15,7 +15,7 @@ import { GoogleGenAI } from '@google/genai';
 
 // API yapılandırma
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-const IMAGE_MODEL = 'gemini-2.5-flash-preview-04-17'; // image gen destekli
+const IMAGE_MODEL = 'gemini-2.5-flash-image'; // Nano Banana — image generation destekli
 
 // Rate limiting
 let activeRequests = 0;
