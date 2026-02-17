@@ -875,8 +875,8 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
         }
         aiImg.onload = () => {
             try {
-                // Geniş alan temizle (orijinal çizim taşması dahil)
-                const pad = Math.max(width, height) * 0.5;
+                // Sadece çizim alanını temizle — yanındaki motiflere DOKUNMA
+                const pad = 2; // Minimal padding (sadece anti-alias artıkları için)
                 const clearX = Math.max(0, x - pad);
                 const clearY = Math.max(0, y - pad);
                 const clearW = Math.min(canvas.width - clearX, width + pad * 2);
@@ -888,15 +888,6 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
                 // Halı zemin geri koy
                 ctx.fillStyle = '#f0e4d0';
                 ctx.fillRect(clearX, clearY, clearW, clearH);
-                // İplik grid
-                ctx.strokeStyle = 'rgba(80,50,20,0.03)';
-                ctx.lineWidth = 0.3;
-                for (let gx = Math.floor(clearX / 4) * 4; gx < clearX + clearW; gx += 4) {
-                    ctx.beginPath(); ctx.moveTo(gx, clearY); ctx.lineTo(gx, clearY + clearH); ctx.stroke();
-                }
-                for (let gy = Math.floor(clearY / 4) * 4; gy < clearY + clearH; gy += 4) {
-                    ctx.beginPath(); ctx.moveTo(clearX, gy); ctx.lineTo(clearX + clearW, gy); ctx.stroke();
-                }
                 // AI motifini yerleştir
                 ctx.globalAlpha = 1.0;
                 ctx.drawImage(aiImg, x, y, width, height);
