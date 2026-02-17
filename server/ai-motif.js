@@ -1,27 +1,38 @@
 /**
- * 🤖 AI Motif Dönüşümü v3 — Antigravity Gateway + Gemini Image Generation
+ * 🤖 AI Motif Dönüşümü v4 — Orijinal Çizimi Koruyarak Kilim Motifine Dönüştürme
  * 
- * Pipeline:
- *  1. Kullanıcının çizimini analiz et (gemini-3-flash — ne çizilmiş?)
- *  2. Analiz sonucuna göre kilim motifi üret (gemini-3-pro-image-1x1)
+ * Pipeline (TEK ADIM):
+ *  1. Orijinal çizimi + dönüşüm prompt'unu gemini-3-pro-image'a gönder
+ *  2. AI orijinal şekli koruyarak kilim motifi versiyonunu üretir
  *  3. Üretilen görseli base64 data URL olarak döndür
  * 
  * Gateway: antigravity2.mindops.net (OpenAI-compatible)
- * Image Model: gemini-3-pro-image-1x1
+ * Model: gemini-3-pro-image-1x1 (img2img destekli)
  */
 
 const API_URL = process.env.AI_API_URL || 'https://antigravity2.mindops.net/v1/chat/completions';
 const API_KEY = process.env.AI_API_KEY || 'sk-antigravity-lejyon-2026';
-
-// Analiz modeli (hızlı, ucuz — çizimi tanımla)
-const ANALYSIS_MODEL = 'gemini-3-flash';
-// Image generation modeli
 const IMAGE_MODEL = 'gemini-3-pro-image-1x1';
 
 // Rate limiting
 let activeRequests = 0;
 const MAX_CONCURRENT = 2;
 const pendingQueue = [];
+
+// Dönüşüm prompt'u — orijinal çizimi koruyarak kilim motifine çevirir
+const TRANSFORM_PROMPT = `Transform this freehand drawing into a traditional Anatolian Turkish kilim carpet motif.
+
+CRITICAL RULES:
+1. KEEP the same subject/shape from the drawing — if it's a house, make a kilim house motif. If it's a cat, make a kilim cat motif. DO NOT change the subject.
+2. Convert the lines and shapes into geometric kilim style: use stepped lines, diamonds, triangles, zigzag edges
+3. Use traditional Turkish kilim color palette: deep reds, navy blue, gold/saffron, cream, dark brown, forest green
+4. Keep the original composition and positioning
+5. Add a small decorative kilim border frame
+6. Fill background with cream/natural wool color
+7. Flat, textile-like coloring — no gradients, no 3D effects, no photorealism
+8. The result should look like it was hand-woven on a carpet loom
+9. Make the motif warm, symmetric where possible, and authentically Turkish
+10. Output a clean, square image`;
 
 /**
  * Ana motif dönüşüm pipeline'ı
@@ -45,17 +56,11 @@ export async function transformToMotif(base64DataUrl) {
     console.log(`🤖 AI motif pipeline başlıyor... (aktif: ${activeRequests})`);
 
     try {
-        // ADIM 1: Çizimi analiz et — ne çizilmiş, ana renk ne?
-        const analysis = await analyzeDrawing(base64DataUrl);
-        console.log(`🔍 Analiz: ${analysis}`);
-
-        // ADIM 2: Kilim motifi üret
-        const motifDataUrl = await generateKilimMotif(analysis);
-
-        if (motifDataUrl) {
+        const result = await generateMotifFromDrawing(base64DataUrl);
+        if (result) {
             console.log(`✅ AI kilim motifi başarılı!`);
         }
-        return motifDataUrl;
+        return result;
     } catch (err) {
         console.error(`❌ AI motif pipeline hatası: ${err.message}`);
         return null;
@@ -69,85 +74,10 @@ export async function transformToMotif(base64DataUrl) {
 }
 
 /**
- * ADIM 1: Çizimi analiz et — ne çizilmiş, ana renk ne?
+ * Orijinal çizimi doğrudan image modeline gönderip kilim motifine dönüştür (img2img)
  */
-async function analyzeDrawing(base64DataUrl) {
-    try {
-        const response = await fetch(API_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${API_KEY}`
-            },
-            body: JSON.stringify({
-                model: ANALYSIS_MODEL,
-                messages: [{
-                    role: 'user',
-                    content: [
-                        {
-                            type: 'text',
-                            text: `Bu çizime bak ve şu bilgileri ver:
-1. Ne çizilmiş? (tek kelime: kedi, çiçek, yıldız, kalp, kuş, vb.)
-2. Ana renk ne? (kırmızı, mavi, yeşil, vb.)
-
-SADECE şu formatta yanıt ver, başka hiçbir şey yazma:
-KONU: [ne çizilmiş]
-RENK: [ana renk]`
-                        },
-                        {
-                            type: 'image_url',
-                            image_url: { url: base64DataUrl }
-                        }
-                    ]
-                }],
-                max_tokens: 50,
-                temperature: 0.1
-            })
-        });
-
-        const data = await response.json();
-
-        if (data.error) {
-            console.error('❌ Analiz hatası:', data.error.message || JSON.stringify(data.error));
-            return 'KONU: desen\nRENK: kırmızı';
-        }
-
-        const content = data.choices?.[0]?.message?.content || 'KONU: desen\nRENK: kırmızı';
-        return content.trim();
-    } catch (err) {
-        console.error('❌ Analiz API hatası:', err.message);
-        return 'KONU: desen\nRENK: kırmızı';
-    }
-}
-
-/**
- * ADIM 2: Analiz sonucuna göre kilim motifi üret
- */
-async function generateKilimMotif(analysis) {
-    // Analizi parse et
-    let subject = 'geometric pattern';
-    let color = 'red';
-
-    const subjectMatch = analysis.match(/KONU:\s*(.+)/i);
-    const colorMatch = analysis.match(/RENK:\s*(.+)/i);
-
-    if (subjectMatch) subject = subjectMatch[1].trim();
-    if (colorMatch) color = colorMatch[1].trim();
-
-    console.log(`🎨 Motif üretiliyor: konu="${subject}", renk="${color}"`);
-
-    const prompt = `Create a traditional Anatolian Turkish kilim carpet motif of a "${subject}".
-
-STYLE RULES:
-- Pure geometric kilim style with diamonds, triangles, zigzag patterns
-- Main color: ${color} tones mixed with traditional kilim colors (deep red, navy blue, gold, cream, dark brown)
-- White/cream background
-- The "${subject}" should be clearly recognizable but rendered in geometric kilim style
-- Add a decorative kilim border frame with repeating geometric patterns
-- Flat textile-like coloring, NO gradients, NO photorealistic effects
-- Should look like a real hand-woven carpet section
-- Clean, symmetrical, warm handcrafted feel
-- Square format, centered composition`;
+async function generateMotifFromDrawing(base64DataUrl) {
+    console.log(`🖼️ Orijinal çizim gönderiliyor → kilim motifine dönüştürülecek...`);
 
     try {
         const response = await fetch(API_URL, {
@@ -160,7 +90,16 @@ STYLE RULES:
                 model: IMAGE_MODEL,
                 messages: [{
                     role: 'user',
-                    content: prompt
+                    content: [
+                        {
+                            type: 'text',
+                            text: TRANSFORM_PROMPT
+                        },
+                        {
+                            type: 'image_url',
+                            image_url: { url: base64DataUrl }
+                        }
+                    ]
                 }],
                 max_tokens: 4096
             })
@@ -183,13 +122,14 @@ STYLE RULES:
             return imgMatch[0];
         }
 
-        // Veya doğrudan base64 olabilir
-        if (content.length > 1000 && /^[A-Za-z0-9+/=]+$/.test(content.trim())) {
-            console.log(`✅ Kilim motifi üretildi (raw base64)! (${Math.round(content.length / 1024)}KB)`);
-            return `data:image/jpeg;base64,${content.trim()}`;
+        // Doğrudan base64 olabilir
+        if (content.length > 1000 && /^[A-Za-z0-9+/=\s]+$/.test(content.trim())) {
+            const clean = content.trim().replace(/\s/g, '');
+            console.log(`✅ Kilim motifi üretildi (raw base64)! (${Math.round(clean.length / 1024)}KB)`);
+            return `data:image/jpeg;base64,${clean}`;
         }
 
-        console.warn('⚠️ Yanıtta görsel bulunamadı. Content:', content.substring(0, 200));
+        console.warn('⚠️ Yanıtta görsel bulunamadı. Content:', content.substring(0, 300));
         return null;
 
     } catch (err) {
@@ -204,7 +144,6 @@ export function getAIStatus() {
         queueLength: pendingQueue.length,
         maxConcurrent: MAX_CONCURRENT,
         hasApiKey: !!API_KEY,
-        analysisModel: ANALYSIS_MODEL,
         imageModel: IMAGE_MODEL
     };
 }
