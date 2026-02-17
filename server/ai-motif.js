@@ -1,43 +1,27 @@
 /**
- * 🤖 AI Motif Dönüşümü v2 — Gemini Native Image Generation
+ * 🤖 AI Motif Dönüşümü v3 — Antigravity Gateway + Gemini Image Generation
  * 
  * Pipeline:
- *  1. Kullanıcının çizimini Gemini'ye gönder (img2img)
- *  2. "Bu çizimi Anadolu kilim motifine dönüştür" prompt'u ile
- *  3. Gemini orijinal şekli koruyarak kilim tarzında yeni görsel üretir
- *  4. Üretilen görseli base64 data URL olarak döndür
+ *  1. Kullanıcının çizimini analiz et (gemini-3-flash — ne çizilmiş?)
+ *  2. Analiz sonucuna göre kilim motifi üret (gemini-3-pro-image-1x1)
+ *  3. Üretilen görseli base64 data URL olarak döndür
  * 
- * Model: gemini-2.5-flash (image generation destekli)
- * SDK: @google/genai
+ * Gateway: antigravity2.mindops.net (OpenAI-compatible)
+ * Image Model: gemini-3-pro-image-1x1
  */
 
-import { GoogleGenAI } from '@google/genai';
+const API_URL = process.env.AI_API_URL || 'https://antigravity2.mindops.net/v1/chat/completions';
+const API_KEY = process.env.AI_API_KEY || 'sk-antigravity-lejyon-2026';
 
-// API yapılandırma
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-const IMAGE_MODEL = 'gemini-2.5-flash-image'; // Nano Banana — image generation destekli
+// Analiz modeli (hızlı, ucuz — çizimi tanımla)
+const ANALYSIS_MODEL = 'gemini-3-flash';
+// Image generation modeli
+const IMAGE_MODEL = 'gemini-3-pro-image-1x1';
 
 // Rate limiting
 let activeRequests = 0;
 const MAX_CONCURRENT = 2;
 const pendingQueue = [];
-
-// Kilim dönüşüm prompt'u — orijinal şekli koruyarak kilim motifine çevirir
-const KILIM_TRANSFORM_PROMPT = `You are a master Turkish kilim carpet designer. Transform this freehand drawing into a traditional Anatolian kilim carpet motif.
-
-CRITICAL RULES:
-1. PRESERVE the original drawing's shape and composition — do NOT create a completely different design
-2. Convert the drawing into geometric kilim style: use diamonds, triangles, zigzag patterns
-3. Make the main subject clearly recognizable as what was drawn
-4. Apply traditional Turkish kilim color palette: deep reds (#8B0000, #C41E3A), navy blue (#1A1A70), gold (#C8A951), cream (#F5F0E8), dark brown (#3D2B1F), forest green (#006400)
-5. Add a decorative kilim border frame around the design with repeating geometric patterns
-6. The entire image should look like it was woven on a real carpet loom
-7. Fill the background with cream/natural wool color
-8. Use flat, textile-like coloring — no gradients, no photorealistic effects
-9. Output should be 512x512 pixels
-10. Make it warm, handcrafted, and authentically Turkish
-
-The result should look like a real hand-woven Anatolian kilim section with the drawn subject as the central motif.`;
 
 /**
  * Ana motif dönüşüm pipeline'ı
@@ -45,8 +29,8 @@ The result should look like a real hand-woven Anatolian kilim section with the d
  * @returns {string|null} - Dönüştürülmüş görselin data URL'i
  */
 export async function transformToMotif(base64DataUrl) {
-    if (!GEMINI_API_KEY) {
-        console.warn('⚠️ GEMINI_API_KEY ayarlanmamış! AI motif devre dışı.');
+    if (!API_KEY) {
+        console.warn('⚠️ AI_API_KEY ayarlanmamış! AI motif devre dışı.');
         return null;
     }
 
@@ -61,8 +45,17 @@ export async function transformToMotif(base64DataUrl) {
     console.log(`🤖 AI motif pipeline başlıyor... (aktif: ${activeRequests})`);
 
     try {
-        const result = await generateKilimMotif(base64DataUrl);
-        return result;
+        // ADIM 1: Çizimi analiz et — ne çizilmiş, ana renk ne?
+        const analysis = await analyzeDrawing(base64DataUrl);
+        console.log(`🔍 Analiz: ${analysis}`);
+
+        // ADIM 2: Kilim motifi üret
+        const motifDataUrl = await generateKilimMotif(analysis);
+
+        if (motifDataUrl) {
+            console.log(`✅ AI kilim motifi başarılı!`);
+        }
+        return motifDataUrl;
     } catch (err) {
         console.error(`❌ AI motif pipeline hatası: ${err.message}`);
         return null;
@@ -76,83 +69,131 @@ export async function transformToMotif(base64DataUrl) {
 }
 
 /**
- * Gemini native image generation ile kilim motifine dönüştürme
+ * ADIM 1: Çizimi analiz et — ne çizilmiş, ana renk ne?
  */
-async function generateKilimMotif(base64DataUrl, retryCount = 0) {
-    const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-
-    // data:image/png;base64, prefix'ini çıkar
-    let base64Data = base64DataUrl;
-    let mimeType = 'image/png';
-
-    const dataUrlMatch = base64DataUrl.match(/^data:(image\/[^;]+);base64,(.+)$/);
-    if (dataUrlMatch) {
-        mimeType = dataUrlMatch[1];
-        base64Data = dataUrlMatch[2];
-    }
-
-    console.log(`🖼️ Çizim boyutu: ${Math.round(base64Data.length / 1024)}KB, format: ${mimeType}`);
-
+async function analyzeDrawing(base64DataUrl) {
     try {
-        const response = await ai.models.generateContent({
-            model: IMAGE_MODEL,
-            contents: [
-                {
+        const response = await fetch(API_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${API_KEY}`
+            },
+            body: JSON.stringify({
+                model: ANALYSIS_MODEL,
+                messages: [{
                     role: 'user',
-                    parts: [
-                        { text: KILIM_TRANSFORM_PROMPT },
+                    content: [
                         {
-                            inlineData: {
-                                mimeType: mimeType,
-                                data: base64Data,
-                            }
+                            type: 'text',
+                            text: `Bu çizime bak ve şu bilgileri ver:
+1. Ne çizilmiş? (tek kelime: kedi, çiçek, yıldız, kalp, kuş, vb.)
+2. Ana renk ne? (kırmızı, mavi, yeşil, vb.)
+
+SADECE şu formatta yanıt ver, başka hiçbir şey yazma:
+KONU: [ne çizilmiş]
+RENK: [ana renk]`
+                        },
+                        {
+                            type: 'image_url',
+                            image_url: { url: base64DataUrl }
                         }
                     ]
-                }
-            ],
-            config: {
-                responseModalities: ['IMAGE', 'TEXT'],
-            }
+                }],
+                max_tokens: 50,
+                temperature: 0.1
+            })
         });
 
-        // Response'dan image part'ını bul
-        if (!response.candidates?.[0]?.content?.parts) {
-            console.warn('⚠️ Gemini yanıtında part yok');
+        const data = await response.json();
+
+        if (data.error) {
+            console.error('❌ Analiz hatası:', data.error.message || JSON.stringify(data.error));
+            return 'KONU: desen\nRENK: kırmızı';
+        }
+
+        const content = data.choices?.[0]?.message?.content || 'KONU: desen\nRENK: kırmızı';
+        return content.trim();
+    } catch (err) {
+        console.error('❌ Analiz API hatası:', err.message);
+        return 'KONU: desen\nRENK: kırmızı';
+    }
+}
+
+/**
+ * ADIM 2: Analiz sonucuna göre kilim motifi üret
+ */
+async function generateKilimMotif(analysis) {
+    // Analizi parse et
+    let subject = 'geometric pattern';
+    let color = 'red';
+
+    const subjectMatch = analysis.match(/KONU:\s*(.+)/i);
+    const colorMatch = analysis.match(/RENK:\s*(.+)/i);
+
+    if (subjectMatch) subject = subjectMatch[1].trim();
+    if (colorMatch) color = colorMatch[1].trim();
+
+    console.log(`🎨 Motif üretiliyor: konu="${subject}", renk="${color}"`);
+
+    const prompt = `Create a traditional Anatolian Turkish kilim carpet motif of a "${subject}".
+
+STYLE RULES:
+- Pure geometric kilim style with diamonds, triangles, zigzag patterns
+- Main color: ${color} tones mixed with traditional kilim colors (deep red, navy blue, gold, cream, dark brown)
+- White/cream background
+- The "${subject}" should be clearly recognizable but rendered in geometric kilim style
+- Add a decorative kilim border frame with repeating geometric patterns
+- Flat textile-like coloring, NO gradients, NO photorealistic effects
+- Should look like a real hand-woven carpet section
+- Clean, symmetrical, warm handcrafted feel
+- Square format, centered composition`;
+
+    try {
+        const response = await fetch(API_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${API_KEY}`
+            },
+            body: JSON.stringify({
+                model: IMAGE_MODEL,
+                messages: [{
+                    role: 'user',
+                    content: prompt
+                }],
+                max_tokens: 4096
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.error) {
+            console.error('❌ Image gen hatası:', data.error.message || JSON.stringify(data.error));
             return null;
         }
 
-        for (const part of response.candidates[0].content.parts) {
-            if (part.inlineData) {
-                const imgBase64 = part.inlineData.data;
-                const imgMime = part.inlineData.mimeType || 'image/png';
-                console.log(`✅ AI kilim motifi üretildi! (${Math.round(imgBase64.length / 1024)}KB)`);
-                return `data:${imgMime};base64,${imgBase64}`;
-            }
-            if (part.text) {
-                console.log(`📝 Gemini metin yanıtı: ${part.text.substring(0, 100)}`);
-            }
+        const content = data.choices?.[0]?.message?.content || '';
+
+        // Response'dan base64 image'ı çıkar
+        // Gateway markdown formatında dönebilir: ![image](data:image/jpeg;base64,...)
+        const imgMatch = content.match(/data:image\/[^;]+;base64,[A-Za-z0-9+/=]+/);
+        if (imgMatch) {
+            console.log(`✅ Kilim motifi üretildi! (${Math.round(imgMatch[0].length / 1024)}KB)`);
+            return imgMatch[0];
         }
 
-        console.warn('⚠️ Gemini yanıtında görsel yok — sadece metin döndü');
+        // Veya doğrudan base64 olabilir
+        if (content.length > 1000 && /^[A-Za-z0-9+/=]+$/.test(content.trim())) {
+            console.log(`✅ Kilim motifi üretildi (raw base64)! (${Math.round(content.length / 1024)}KB)`);
+            return `data:image/jpeg;base64,${content.trim()}`;
+        }
+
+        console.warn('⚠️ Yanıtta görsel bulunamadı. Content:', content.substring(0, 200));
         return null;
 
     } catch (err) {
-        // Detaylı hata logla
-        console.error(`❌ Gemini API Hatası:`, JSON.stringify({
-            status: err.status,
-            message: err.message?.substring(0, 200),
-            code: err.code,
-        }));
-
-        if (err.status === 429 && retryCount < 2) {
-            const waitTime = (retryCount + 1) * 15000;
-            console.warn(`⏳ Rate limit — ${waitTime / 1000}s bekliyor... (deneme ${retryCount + 1}/2)`);
-            await sleep(waitTime);
-            return generateKilimMotif(base64DataUrl, retryCount + 1);
-        }
-        if (err.message?.includes('SAFETY')) {
-            console.warn('⚠️ Safety filter tetiklendi');
-        }
+        console.error('❌ Image gen API hatası:', err.message);
         return null;
     }
 }
@@ -162,11 +203,8 @@ export function getAIStatus() {
         activeRequests,
         queueLength: pendingQueue.length,
         maxConcurrent: MAX_CONCURRENT,
-        hasApiKey: !!GEMINI_API_KEY,
-        model: IMAGE_MODEL
+        hasApiKey: !!API_KEY,
+        analysisModel: ANALYSIS_MODEL,
+        imageModel: IMAGE_MODEL
     };
-}
-
-function sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
 }
