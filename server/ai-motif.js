@@ -1,57 +1,85 @@
 /**
- * 🤖 AI Motif Dönüşümü — Dual Model Fallback
+ * 🤖 AI Motif Stilizasyonu — Çizimi KORUYARAK güzelleştirme
+ * 
+ * TEMEL FELSEFe: Kullanıcının çizimini YERİNE KOYMAK DEĞİL,
+ * üzerine kilim estetiği KATMAK. Orijinal şekil ve anlam KORUNMALI.
  * 
  * Strateji:
- *  1. gemini-3-pro-image → native image gen (en iyi sonuç)
- *  2. gemini-2.5-flash → SVG motif kodu → base64 PNG'ye çevir (fallback)
+ *  1. gemini-3-pro-image → orijinali güzelleştir (en iyi)
+ *  2. gpt-image-1 → orijinali güzelleştir (ikinci)
+ *  3. gemini-2.5-flash → SVG border/frame overlay (fallback)
  * 
- * OpenAI-compatible multimodal API endpoint kullanır.
+ * Client-side'da orijinal çizim HER ZAMAN %70+ korunur,
+ * AI sonucu sadece enhancement layer olarak uygulanır.
  */
 
 const API_URL = process.env.AI_API_URL || 'https://antigravity2.mindops.net/v1/chat/completions';
 const API_KEY = process.env.AI_API_KEY || 'sk-antigravity-lejyon-2026';
 const PRIMARY_MODEL = 'gemini-3-pro-image';
+const SECONDARY_MODEL = 'gpt-image-1';
 const FALLBACK_MODEL = 'gemini-2.5-flash';
 
 const MAX_RETRIES = 2;
-const RETRY_DELAY_MS = 15000;
+const RETRY_DELAY_MS = 12000;
 const REQUEST_TIMEOUT_MS = 180000;
 
-// AI motif dönüşüm durumu
 let activeRequests = 0;
 const MAX_CONCURRENT = 2;
 const pendingQueue = [];
 
-// 🎨 Image gen prompt'u (gemini-3-pro-image)
-const IMAGE_PROMPT = `You are a master traditional Anatolian carpet/kilim motif designer.
+// 🎨 IMAGE ENHANCEMENT prompt — "REPLACE DEĞİL, ENHANCE"
+const IMAGE_PROMPT = `You are enhancing a freehand drawing for a digital carpet weaving installation.
 
-I will give you a freehand drawing made by a visitor. Transform it into a beautiful traditional Anatolian kilim motif.
+LOOK at the attached drawing carefully. Your job is to ENHANCE it, NOT replace it.
 
-Rules:
-1. PRESERVE the general SHAPE and COLOR PALETTE of the original drawing
-2. Add geometric symmetry (center symmetry, 4-fold or 8-fold)
-3. Straighten edges, sharpen lines into clean geometric shapes
-4. Use traditional kilim motif language: ram's horn (koçboynuzu), hands-on-hips (elibelinde), stars, eye motifs, tree of life
-5. Keep the background TRANSPARENT or very light cream (#f5f0e8)
-6. Output must be SQUARE format
-7. Use vibrant, carpet-appropriate tones of the original colors
-8. Make it look like a hand-woven carpet detail, with visible thread texture
+ABSOLUTE RULES — VIOLATION = FAILURE:
+1. The OUTPUT must look 80%+ IDENTICAL to the INPUT drawing
+2. SAME shapes, SAME colors, SAME composition, SAME meaning
+3. DO NOT add new major shapes or figures that weren't in the original
+4. DO NOT change what the drawing represents
 
-Generate ONLY the image, no text.`;
+ALLOWED enhancements (subtle only):
+- Smooth out jagged brush strokes slightly
+- Enrich colors: make reds deeper, blues richer, but keep the SAME hue
+- Add a tiny decorative border frame (2-3px) around the edges in kilim style
+- Add very subtle woven texture overlay (like fine fabric grain)
+- Slightly sharpen edges for clarity
 
-// 🎨 SVG fallback prompt'u (gemini-2.5-flash) — kısa SVG için optimize edildi
-const SVG_PROMPT = `Generate a simple 256x256 SVG of a traditional Anatolian kilim motif.
+FORBIDDEN:
+- Creating a new image from scratch
+- Adding geometric kilim motifs that weren't drawn
+- Replacing the drawing with traditional patterns
+- Changing the subject matter or composition
+- Making it look like a DIFFERENT drawing
 
-IMPORTANT: Keep it SIMPLE - use basic shapes only (rect, polygon, circle, line). Maximum 30 elements.
+Think of yourself as a skilled craftsperson who takes the visitor's exact drawing 
+and carefully weaves it into fabric — the image stays the same, 
+only the MEDIUM changes (from digital to woven).
 
-Colors: #c41e3a (red), #1a3a6b (blue), #c8a951 (gold), #f5f0e8 (cream bg), #2d5a27 (green).
+Background should remain transparent where the original had transparency.
+Output SQUARE format.
+Generate ONLY the image.`;
 
-Include: central diamond, corner triangles, geometric border pattern.
+// 🎨 SVG BORDER-ONLY fallback — sadece çerçeve ve dekoratif kenar üretir
+const SVG_BORDER_PROMPT = `Look at this freehand drawing. Create a 256x256 SVG that serves as a DECORATIVE BORDER FRAME for this drawing.
 
-Output ONLY raw SVG code. Start with <svg, end with </svg>. No markdown, no text.`;
+CRITICAL: You are NOT recreating the drawing. You are creating ONLY a border/frame to go AROUND it.
+
+The SVG should contain:
+1. A decorative kilim-style border frame (geometric patterns along the 4 edges)
+2. Corner decorations (small traditional motifs at 4 corners)
+3. The CENTER must be EMPTY/TRANSPARENT — the original drawing will be placed there
+4. Use colors that complement the drawing: earthy reds, blues, golds, creams
+
+Use basic SVG shapes. Maximum 30 elements.
+Colors: #c41e3a (red), #1a3a6b (blue), #c8a951 (gold), #f5f0e8 (cream), #2d5a27 (green).
+
+The border should be about 8-12px thick on each side.
+
+Output ONLY raw SVG code. Start with <svg, end with </svg>. No markdown, no explanation.`;
 
 /**
- * Serbest çizimi AI ile kilim motifine dönüştürür
+ * Çizimi AI ile ENHANCE eder (replace değil!)
  */
 export async function transformToMotif(base64DataUrl) {
     if (activeRequests >= MAX_CONCURRENT) {
@@ -62,16 +90,21 @@ export async function transformToMotif(base64DataUrl) {
     }
 
     activeRequests++;
-    console.log(`🤖 AI motif dönüşümü başlıyor... (aktif: ${activeRequests})`);
+    console.log(`🤖 AI enhancement başlıyor... (aktif: ${activeRequests})`);
 
     try {
-        // Strateji 1: gemini-3-pro-image ile native image gen
-        const imageResult = await tryImageGeneration(base64DataUrl);
+        // Strateji 1: gemini-3-pro-image ile enhance
+        const imageResult = await tryImageGeneration(base64DataUrl, PRIMARY_MODEL);
         if (imageResult) return imageResult;
 
-        // Strateji 2: gemini-2.5-flash ile SVG fallback
-        console.log('🔄 Fallback: SVG motif oluşturma...');
-        const svgResult = await trySVGGeneration();
+        // Strateji 2: gpt-image-1 ile enhance
+        console.log('🔄 Fallback 1: gpt-image-1 deneniyor...');
+        const openaiResult = await tryImageGeneration(base64DataUrl, SECONDARY_MODEL);
+        if (openaiResult) return openaiResult;
+
+        // Strateji 3: SVG border frame (çizimin etrafına kilim çerçevesi)
+        console.log('🔄 Fallback 2: SVG border frame oluşturma...');
+        const svgResult = await trySVGBorderGeneration(base64DataUrl);
         if (svgResult) return svgResult;
 
         return null;
@@ -85,74 +118,68 @@ export async function transformToMotif(base64DataUrl) {
 }
 
 /**
- * Strateji 1: Native image generation (gemini-3-pro-image)
+ * Image enhancement (orijinali koruyarak güzelleştirme)
  */
-async function tryImageGeneration(base64DataUrl) {
+async function tryImageGeneration(base64DataUrl, model) {
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
-            const result = await callAPI(PRIMARY_MODEL, [
+            const result = await callAPI(model, [
                 { type: 'text', text: IMAGE_PROMPT },
                 { type: 'image_url', image_url: { url: base64DataUrl } }
             ]);
 
-            // Response'dan base64 image çıkar
             const match = result.match(/data:image\/(jpeg|png);base64,([A-Za-z0-9+/=\n]+)/);
             if (match) {
                 const mimeType = match[1];
                 const base64 = match[2].replace(/\n/g, '');
-                console.log(`✅ Image gen başarılı! (${mimeType}, ${Math.round(base64.length / 1024)} KB)`);
+                console.log(`✅ ${model} enhancement başarılı! (${mimeType}, ${Math.round(base64.length / 1024)} KB)`);
                 return `data:image/${mimeType};base64,${base64}`;
             }
-            console.warn('⚠️ Image gen yanıtında resim yok');
+            console.warn(`⚠️ ${model} yanıtında resim yok`);
             return null;
         } catch (err) {
             if ((err.status === 503 || err.status === 429) && attempt < MAX_RETRIES) {
                 const delay = RETRY_DELAY_MS * attempt;
-                console.log(`⏳ Image gen retry ${attempt}/${MAX_RETRIES} — ${delay / 1000}s... (${err.message})`);
+                console.log(`⏳ ${model} retry ${attempt}/${MAX_RETRIES} — ${delay / 1000}s... (${err.message})`);
                 await sleep(delay);
                 continue;
             }
-            console.log(`⚠️ Image gen başarısız: ${err.message}`);
-            return null; // Fallback'e geç
+            console.log(`⚠️ ${model} başarısız: ${err.message}`);
+            return null;
         }
     }
     return null;
 }
 
 /**
- * Strateji 2: SVG tabanlı motif (gemini-2.5-flash) → base64 PNG
+ * SVG BORDER frame — çizimin etrafına dekoratif kilim çerçevesi
  */
-async function trySVGGeneration() {
+async function trySVGBorderGeneration(base64DataUrl) {
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
             const result = await callAPI(FALLBACK_MODEL, [
-                { type: 'text', text: SVG_PROMPT }
+                { type: 'text', text: SVG_BORDER_PROMPT },
+                { type: 'image_url', image_url: { url: base64DataUrl } }
             ]);
 
-            // SVG kodu çıkar
             let svg = result;
-            console.log(`🔍 SVG yanıtı (ilk 300): ${svg.substring(0, 300)}`);
-            // Markdown fence varsa temizle
+            console.log(`🔍 SVG border yanıtı (ilk 300): ${svg.substring(0, 300)}`);
             svg = svg.replace(/```(?:xml|svg|html)?\n?/g, '').replace(/```/g, '').trim();
 
-            // SVG tag kontrolü
             let svgMatch = svg.match(/<svg[\s\S]*<\/svg>/i);
-            // Eğer </svg> yoksa ama <svg var ise, kapatma tag'ı ekle
             if (!svgMatch && svg.includes('<svg')) {
-                console.log('⚠️ SVG kapanış tagı eksik, ekleniyor...');
                 svg = svg + '</svg>';
                 svgMatch = svg.match(/<svg[\s\S]*<\/svg>/i);
             }
             if (!svgMatch) {
-                console.warn('⚠️ SVG yanıtında <svg> tag bulunamadı. Tam yanıt uzunluğu:', svg.length);
+                console.warn('⚠️ SVG border yanıtında <svg> tag bulunamadı.');
                 if (attempt < MAX_RETRIES) continue;
                 return null;
             }
 
             svg = svgMatch[0];
-            console.log(`✅ SVG motif oluşturuldu! (${svg.length} byte)`);
+            console.log(`✅ SVG border oluşturuldu! (${svg.length} byte)`);
 
-            // SVG → base64 data URL
             const base64Svg = Buffer.from(svg).toString('base64');
             return `data:image/svg+xml;base64,${base64Svg}`;
         } catch (err) {
@@ -162,16 +189,13 @@ async function trySVGGeneration() {
                 await sleep(delay);
                 continue;
             }
-            console.error(`❌ SVG gen başarısız: ${err.message}`);
+            console.error(`❌ SVG border gen başarısız: ${err.message}`);
             return null;
         }
     }
     return null;
 }
 
-/**
- * Generic API çağrısı
- */
 async function callAPI(model, content) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);

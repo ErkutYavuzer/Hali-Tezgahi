@@ -168,7 +168,7 @@ function createCarpetMaterial(drawingTexture, normalMap, bumpMap) {
             // 🎨 RENK CANLANDIRMA - Satürasyon artışı
             float luminance = dot(gl_FragColor.rgb, vec3(0.299, 0.587, 0.114));
             vec3 saturated = mix(vec3(luminance), gl_FragColor.rgb, 1.8);
-            gl_FragColor.rgb = saturated * 1.25;
+            gl_FragColor.rgb = saturated * 1.4;
             
             // Rim ışık (kenar parlaması - yün tüylerini simüle eder)
             float rim = 1.0 - max(dot(normalize(vViewPosition), normalize(vNormal)), 0.0);
@@ -209,13 +209,13 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
         canvas.height = CONFIG.TEXTURE_HEIGHT;
         const ctx = canvas.getContext('2d');
 
-        // Halının varsayılan rengi (açık krem — çizimler öne çıksın)
-        ctx.fillStyle = '#e8dcc8';
+        // Halının varsayılan rengi (sıcak krem — karanlık sahnede parlak görünsün)
+        ctx.fillStyle = '#f0e4d0';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // İnce dokuma ızgara efekti
-        ctx.strokeStyle = 'rgba(0,0,0,0.04)';
-        ctx.lineWidth = 0.5;
+        // İnce dokuma ızgara efekti (çok hafif)
+        ctx.strokeStyle = 'rgba(0,0,0,0.025)';
+        ctx.lineWidth = 0.3;
         const gridStep = 6;
         for (let x = 0; x < canvas.width; x += gridStep) {
             ctx.beginPath();
@@ -256,7 +256,34 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
     // =====================================================================
     // 🧶 İPLİK DOKUMA EFEKTİ
     // =====================================================================
-    const THREAD_SIZE = 3; // İplik aralığı (küçük = daha detaylı)
+    const THREAD_SIZE = 2; // İplik aralığı (küçük = daha detaylı)
+
+    // ✍️ Motife dokuma estetiğinde isim yazma
+    const renderWovenName = useCallback((ctx, name, x, y, width, height) => {
+        if (!name || name === 'Anonim') return;
+        ctx.save();
+        const fontSize = Math.max(10, Math.min(16, width * 0.06));
+        ctx.font = `600 ${fontSize}px "Georgia", "Times New Roman", serif`;
+        ctx.fillStyle = 'rgba(60, 30, 10, 0.65)';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'bottom';
+        const padding = Math.max(3, width * 0.02);
+        ctx.fillText(name, x + width - padding, y + height - padding);
+        // İplik dokusu efekti (ismin üzerinden yatay çizgiler)
+        const textMetrics = ctx.measureText(name);
+        const textX = x + width - padding - textMetrics.width;
+        const textY = y + height - padding - fontSize;
+        ctx.globalAlpha = 0.12;
+        ctx.strokeStyle = 'rgba(80,50,20,0.4)';
+        ctx.lineWidth = 0.4;
+        for (let ty = textY; ty < y + height - padding; ty += 2) {
+            ctx.beginPath();
+            ctx.moveTo(textX - 2, ty);
+            ctx.lineTo(textX + textMetrics.width + 2, ty);
+            ctx.stroke();
+        }
+        ctx.restore();
+    }, []);
 
     // Anında dokuma çiz (initial-carpet yüklemesi için — animasyonsuz)
     const drawWovenImage = useCallback((drawing) => {
@@ -291,8 +318,8 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
             const imageData = tmpCtx.getImageData(0, 0, drawing.width, drawing.height);
             const pixels = imageData.data;
 
-            // İplik çizgileri — çok hafif overlay
-            ctx.globalAlpha = 0.06;
+            // İplik çizgileri — belirgin overlay
+            ctx.globalAlpha = 0.08;
             ctx.globalCompositeOperation = 'source-over';
 
             for (let ty = 0; ty < drawing.height; ty += THREAD_SIZE) {
@@ -301,13 +328,17 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
                     const r = pixels[pi], g = pixels[pi + 1], b = pixels[pi + 2], a = pixels[pi + 3];
                     if (a < 30) continue;
 
-                    ctx.fillStyle = `rgba(0,0,0,0.3)`;
+                    ctx.fillStyle = 'rgba(80,50,20,0.25)';
                     ctx.fillRect(drawing.x + tx, drawing.y + ty + THREAD_SIZE * 0.5, THREAD_SIZE, 0.5);
                     ctx.fillRect(drawing.x + tx + THREAD_SIZE * 0.5, drawing.y + ty, 0.5, THREAD_SIZE);
                 }
             }
 
             ctx.restore();
+
+            // ✍️ İsim render
+            renderWovenName(ctx, drawing.userName, drawing.x, drawing.y, drawing.width, drawing.height);
+
             needsUpdateRef.current = true;
             console.log(`✅ drawWovenImage tamamlandı: ${drawing.id?.substring(0, 15)}`);
         };
@@ -315,7 +346,7 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
             console.error('❌ drawWovenImage resim yüklenemedi!', drawing.id, e);
         };
         img.src = drawing.dataUrl;
-    }, []);
+    }, [renderWovenName]);
 
     // =====================================================================
     // 🚀 UÇAN PİKSEL SİSTEMİ — Çizimden 3D parçacıklara
@@ -507,89 +538,105 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
     }, []);
 
     // =====================================================================
-    // 🤖 AI MOTİF MORPH ANİMASYONU
+    // 🤖 AI ENHANCEMENT OVERLAY — Orijinal çizimi KORUYARAK güzelleştirme
     // =====================================================================
-    const morphToAIMotif = useCallback(({ id, aiDataUrl, x, y, width, height }) => {
+    // MAX_AI_BLEND: AI sonucu bu opacity'den fazla uygulanMAZ
+    // Orijinal çizim her zaman %100 görünür kalır, AI sadece hafif overlay
+    const MAX_AI_BLEND = 0.35;
+
+    const morphToAIMotif = useCallback(({ id, aiDataUrl, userName, x, y, width, height }) => {
         const ctx = offscreenCtxRef.current;
         if (!ctx || !aiDataUrl) return;
 
-        console.log(`🤖✨ AI morph başlıyor: ${id?.substring(0, 15)}`);
+        console.log(`🤖✨ AI enhancement başlıyor: ${id?.substring(0, 15)} (max blend: ${MAX_AI_BLEND})`);
 
         const aiImg = new Image();
         aiImg.crossOrigin = 'anonymous';
         aiImg.onload = () => {
-            // Aşama 1: Altın ışıltı pulsu (glow flash)
-            const glowFrames = 12;
+            // 💡 Orijinal çizim ZATEN canvas'ta — silmiyoruz!
+            // AI sonucunu sadece hafif overlay olarak uyguluyoruz
+
+            // Aşama 1: Yumuşak altın ışıltı (dönüşüm başladı sinyali)
+            const glowFrames = 10;
             let frame = 0;
 
             const glowInterval = setInterval(() => {
                 if (frame >= glowFrames) {
                     clearInterval(glowInterval);
-                    // Aşama 2: Crossfade — AI motifini üç adımda yerleştir
-                    startCrossfade(ctx, aiImg, x, y, width, height);
+                    // Aşama 2: AI overlay — BLEND, replace DEĞİL!
+                    startAIBlend(ctx, aiImg, userName, x, y, width, height);
                     return;
                 }
 
                 ctx.save();
-                // Pulsating golden glow
-                const intensity = Math.sin((frame / glowFrames) * Math.PI) * 0.6;
+                const intensity = Math.sin((frame / glowFrames) * Math.PI) * 0.3;
                 ctx.globalAlpha = intensity;
                 ctx.globalCompositeOperation = 'lighter';
 
-                // Altın renkli glow overlay
                 const gradient = ctx.createRadialGradient(
                     x + width / 2, y + height / 2, 0,
-                    x + width / 2, y + height / 2, Math.max(width, height) * 0.7
+                    x + width / 2, y + height / 2, Math.max(width, height) * 0.6
                 );
-                gradient.addColorStop(0, 'rgba(255, 215, 0, 0.8)');
-                gradient.addColorStop(0.5, 'rgba(255, 165, 0, 0.4)');
+                gradient.addColorStop(0, 'rgba(255, 215, 0, 0.5)');
+                gradient.addColorStop(0.6, 'rgba(255, 180, 0, 0.2)');
                 gradient.addColorStop(1, 'rgba(255, 215, 0, 0)');
                 ctx.fillStyle = gradient;
-                ctx.fillRect(x - 10, y - 10, width + 20, height + 20);
+                ctx.fillRect(x - 5, y - 5, width + 10, height + 10);
 
                 ctx.restore();
                 needsUpdateRef.current = true;
                 frame++;
-            }, 60);
+            }, 50);
         };
         aiImg.onerror = (e) => {
-            console.error('❌ AI morph: resim yüklenemedi', e);
+            console.error('❌ AI enhancement: resim yüklenemedi', e);
         };
         aiImg.src = aiDataUrl;
     }, []);
 
-    // Crossfade: orijinal → AI motifi (üç adımlı geçiş)
-    const startCrossfade = useCallback((ctx, aiImg, x, y, width, height) => {
-        const fadeSteps = 8;
+    // AI Blend: Orijinal çizim üzerine AI'ı HAFIF overlay (max %35)
+    const startAIBlend = useCallback((ctx, aiImg, userName, x, y, width, height) => {
+        const blendSteps = 6;
         let step = 0;
 
-        const fadeInterval = setInterval(() => {
-            if (step >= fadeSteps) {
-                clearInterval(fadeInterval);
-                // Son adım: tam AI motifini çiz + iplik dokusu
+        const blendInterval = setInterval(() => {
+            if (step >= blendSteps) {
+                clearInterval(blendInterval);
+
+                // SON ADIM: AI overlay (max MAX_AI_BLEND opacity) + kilim çerçevesi
                 ctx.save();
-                ctx.globalAlpha = 1.0;
+                ctx.globalAlpha = MAX_AI_BLEND;
                 ctx.globalCompositeOperation = 'source-over';
                 ctx.drawImage(aiImg, x, y, width, height);
+                ctx.restore();
 
-                // İplik overlay (hafif)
-                const THREAD_SIZE = 3;
-                ctx.globalAlpha = 0.04;
-                for (let ty = 0; ty < height; ty += THREAD_SIZE) {
-                    ctx.fillStyle = 'rgba(0,0,0,0.3)';
-                    ctx.fillRect(x, y + ty + THREAD_SIZE * 0.5, width, 0.5);
+                // 🧵 Kilim çerçevesi — dekoratif kenar (orijinale dokunmadan)
+                applyKilimBorder(ctx, x, y, width, height);
+
+                // 🧶 İplik dokusu overlay (çizimin dokuma hissi vermesi)
+                ctx.save();
+                ctx.globalAlpha = 0.06;
+                const ts = 2;
+                for (let ty = 0; ty < height; ty += ts) {
+                    ctx.fillStyle = 'rgba(80,50,20,0.2)';
+                    ctx.fillRect(x, y + ty + ts * 0.5, width, 0.5);
                 }
-                for (let tx = 0; tx < width; tx += THREAD_SIZE) {
-                    ctx.fillStyle = 'rgba(0,0,0,0.3)';
-                    ctx.fillRect(x + tx + THREAD_SIZE * 0.5, y, 0.5, height);
+                for (let tx = 0; tx < width; tx += ts) {
+                    ctx.fillStyle = 'rgba(80,50,20,0.2)';
+                    ctx.fillRect(x + tx + ts * 0.5, y, 0.5, height);
                 }
                 ctx.restore();
+
+                // ✍️ İsim render
+                renderWovenName(ctx, userName, x, y, width, height);
+
                 needsUpdateRef.current = true;
-                console.log(`✨ AI morph tamamlandı!`);
+                console.log(`✨ AI enhancement tamamlandı! (blend: ${MAX_AI_BLEND})`);
                 return;
             }
 
-            const alpha = (step + 1) / fadeSteps;
+            // Kademeli blend: 0 → MAX_AI_BLEND arası
+            const alpha = ((step + 1) / blendSteps) * MAX_AI_BLEND;
             ctx.save();
             ctx.globalAlpha = alpha;
             ctx.globalCompositeOperation = 'source-over';
@@ -597,7 +644,37 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
             ctx.restore();
             needsUpdateRef.current = true;
             step++;
-        }, 80);
+        }, 70);
+    }, [renderWovenName]);
+
+    // 🧵 Kilim tarzı dekoratif çerçeve (orijinal çizime dokunmadan kenar ekler)
+    const applyKilimBorder = useCallback((ctx, x, y, width, height) => {
+        ctx.save();
+        const borderW = Math.max(3, Math.min(8, width * 0.02));
+
+        // Dış çerçeve — koyu çizgi
+        ctx.strokeStyle = 'rgba(139, 69, 19, 0.6)';
+        ctx.lineWidth = borderW;
+        ctx.strokeRect(x + borderW / 2, y + borderW / 2, width - borderW, height - borderW);
+
+        // İç çerçeve — ince altın çizgi
+        ctx.strokeStyle = 'rgba(205, 165, 80, 0.4)';
+        ctx.lineWidth = Math.max(1, borderW * 0.5);
+        ctx.strokeRect(x + borderW * 1.5, y + borderW * 1.5, width - borderW * 3, height - borderW * 3);
+
+        // Köşe süsleri (küçük dörtgenler)
+        const cornerSize = Math.max(4, borderW * 1.5);
+        ctx.fillStyle = 'rgba(180, 120, 50, 0.5)';
+        // Sol üst
+        ctx.fillRect(x + borderW * 0.5, y + borderW * 0.5, cornerSize, cornerSize);
+        // Sağ üst
+        ctx.fillRect(x + width - borderW * 0.5 - cornerSize, y + borderW * 0.5, cornerSize, cornerSize);
+        // Sol alt
+        ctx.fillRect(x + borderW * 0.5, y + height - borderW * 0.5 - cornerSize, cornerSize, cornerSize);
+        // Sağ alt
+        ctx.fillRect(x + width - borderW * 0.5 - cornerSize, y + height - borderW * 0.5 - cornerSize, cornerSize, cornerSize);
+
+        ctx.restore();
     }, []);
 
     // =====================================================================
@@ -610,12 +687,23 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
             console.log(`📦 initial-carpet geldi: ${drawings?.length || 0} çizim`);
             if (drawings && drawings.length > 0) {
                 drawings.forEach((drawing, i) => {
-                    // AI versiyonu varsa direkt onu kullan
-                    const renderDrawing = drawing.aiDataUrl
-                        ? { ...drawing, dataUrl: drawing.aiDataUrl }
-                        : drawing;
-                    // Her çizim sırayla uçarak gelsin
-                    setTimeout(() => launchFlyingPixels(renderDrawing), i * 800);
+                    // HER ZAMAN orijinal çizimi göster (AI asla tam üstüne yazılmaz)
+                    setTimeout(() => launchFlyingPixels(drawing), i * 800);
+
+                    // AI versiyonu varsa, çizim yerleştikten sonra overlay olarak uygula
+                    if (drawing.aiDataUrl) {
+                        setTimeout(() => {
+                            morphToAIMotif({
+                                id: drawing.id,
+                                aiDataUrl: drawing.aiDataUrl,
+                                userName: drawing.userName,
+                                x: drawing.x,
+                                y: drawing.y,
+                                width: drawing.width,
+                                height: drawing.height
+                            });
+                        }, i * 800 + 3000); // Çizim yerleştikten 3sn sonra AI blend
+                    }
                 });
             }
         });
@@ -637,12 +725,12 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
 
             flyingQueueRef.current = [];
 
-            ctx.fillStyle = '#c8b896';
+            ctx.fillStyle = '#f0e4d0';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            ctx.strokeStyle = 'rgba(0,0,0,0.04)';
-            ctx.lineWidth = 0.5;
-            const gridStep = 6;
+            ctx.strokeStyle = 'rgba(80,50,20,0.03)';
+            ctx.lineWidth = 0.3;
+            const gridStep = 4;
             for (let x = 0; x < canvas.width; x += gridStep) {
                 ctx.beginPath();
                 ctx.moveTo(x, 0);

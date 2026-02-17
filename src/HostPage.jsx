@@ -1,9 +1,9 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Canvas } from '@react-three/fiber';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera, Text } from '@react-three/drei';
 import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
 import { io } from 'socket.io-client';
-import { WOOD_TEXTURE } from './components/3d/materials';
+import * as THREE from 'three';
 import CarpetBoard from './components/3d/CarpetBoard';
 import { CarpetBorder, CarpetFringes, BORDER_WIDTH } from './components/3d/CarpetBorder';
 import { CONFIG } from './constants';
@@ -13,24 +13,111 @@ const initAudio = () => {
   audioManager.init().then(() => console.log('🔊 Audio System Initialized'));
 };
 
-// 🧶 HALI BİLEŞENİ
-function MegaCarpetWrapper({ socket }) {
+// ✨ HAVADA SÜZÜLEN TOZ PARÇACIKLARI — zamansız atmosfer
+function FloatingDust({ count = 80 }) {
+  const meshRef = useRef();
+  const dummy = useMemo(() => new THREE.Object3D(), []);
+
+  const particles = useMemo(() => {
+    return Array.from({ length: count }, () => ({
+      x: (Math.random() - 0.5) * 120,
+      y: Math.random() * 80 - 10,
+      z: (Math.random() - 0.5) * 80,
+      scale: 0.03 + Math.random() * 0.08,
+      speedY: 0.002 + Math.random() * 0.008,
+      speedX: (Math.random() - 0.5) * 0.003,
+      drift: Math.random() * Math.PI * 2,
+      driftSpeed: 0.1 + Math.random() * 0.3,
+    }));
+  }, [count]);
+
+  useFrame((state) => {
+    const t = state.clock.elapsedTime;
+    particles.forEach((p, i) => {
+      p.y += p.speedY;
+      if (p.y > 70) p.y = -10;
+
+      dummy.position.set(
+        p.x + Math.sin(t * p.driftSpeed + p.drift) * 2,
+        p.y,
+        p.z + Math.cos(t * p.driftSpeed * 0.7 + p.drift) * 1.5
+      );
+      dummy.scale.setScalar(p.scale * (0.7 + Math.sin(t * 0.5 + i) * 0.3));
+      dummy.updateMatrix();
+      meshRef.current.setMatrixAt(i, dummy.matrix);
+    });
+    meshRef.current.instanceMatrix.needsUpdate = true;
+  });
+
+  return (
+    <instancedMesh ref={meshRef} args={[null, null, count]}>
+      <sphereGeometry args={[1, 6, 6]} />
+      <meshBasicMaterial color="#ffd699" transparent opacity={0.35} />
+    </instancedMesh>
+  );
+}
+
+// 🌟 HALININ ARKASINDA SICAK HALO GLOW
+function BackdropGlow() {
+  const meshRef = useRef();
+
+  useFrame((state) => {
+    const t = state.clock.elapsedTime;
+    if (meshRef.current) {
+      meshRef.current.material.opacity = 0.15 + Math.sin(t * 0.4) * 0.04;
+    }
+  });
+
+  return (
+    <mesh ref={meshRef} position={[0, 22, -3]}>
+      <planeGeometry args={[40, 55]} />
+      <meshBasicMaterial
+        color="#f5a623"
+        transparent
+        opacity={0.15}
+        side={THREE.DoubleSide}
+        blending={THREE.AdditiveBlending}
+        depthWrite={false}
+      />
+    </mesh>
+  );
+}
+
+// 🧶 HALININ NEFES ALMA ANİMASYONU — Boşlukta süzülen kilim
+function BreathingCarpet({ socket }) {
+  const groupRef = useRef();
   const carpetWidth = CONFIG.CARPET_WIDTH;
   const carpetDepth = CONFIG.CARPET_DEPTH;
+
+  useFrame((state) => {
+    if (groupRef.current) {
+      const t = state.clock.elapsedTime;
+      // Hafif yukarı-aşağı nefes (süzülme hissi)
+      groupRef.current.position.y = 22 + Math.sin(t * 0.25) * 0.4;
+      // Çok ince yatay salınım
+      groupRef.current.rotation.y = Math.sin(t * 0.12) * 0.008;
+    }
+  });
+
+  // CarpetBoard mesh zaten rotation={[-π/2,0,0]} ile yatırıyor.
+  // Wrapper'da +π/2 ile geri dikiyoruz → kameraya bakan dikey halı.
+  // position={[0,22,0]} → sahne merkezinde, kamera hedefinde.
   return (
-    <group rotation={[-Math.PI / 2, 0, 0]} position={[0, 22, 0]}>
-      <CarpetBoard socket={socket} carpetWidth={carpetWidth} carpetDepth={carpetDepth}>
-        <CarpetBorder width={carpetWidth} depth={carpetDepth} />
-        <CarpetFringes width={carpetWidth} depth={carpetDepth} />
-        <mesh position={[0, -0.05, 0]} receiveShadow>
-          <boxGeometry args={[carpetWidth + BORDER_WIDTH * 2 + 0.05, 0.04, carpetDepth + BORDER_WIDTH * 2 + 0.05]} />
-          <meshStandardMaterial color="#300000" roughness={1} />
-        </mesh>
-        <mesh position={[0, -0.08, 0]} receiveShadow>
-          <boxGeometry args={[carpetWidth + BORDER_WIDTH * 2, 0.02, carpetDepth + BORDER_WIDTH * 2]} />
-          <meshBasicMaterial color="#000" />
-        </mesh>
-      </CarpetBoard>
+    <group ref={groupRef} position={[0, 22, 0]}>
+      <group rotation={[Math.PI / 2, 0, 0]}>
+        <CarpetBoard socket={socket} carpetWidth={carpetWidth} carpetDepth={carpetDepth}>
+          <CarpetBorder width={carpetWidth} depth={carpetDepth} />
+          <CarpetFringes width={carpetWidth} depth={carpetDepth} />
+          <mesh position={[0, -0.05, 0]} receiveShadow>
+            <boxGeometry args={[carpetWidth + BORDER_WIDTH * 2 + 0.05, 0.04, carpetDepth + BORDER_WIDTH * 2 + 0.05]} />
+            <meshStandardMaterial color="#300000" roughness={1} />
+          </mesh>
+          <mesh position={[0, -0.08, 0]} receiveShadow>
+            <boxGeometry args={[carpetWidth + BORDER_WIDTH * 2, 0.02, carpetDepth + BORDER_WIDTH * 2]} />
+            <meshBasicMaterial color="#000" />
+          </mesh>
+        </CarpetBoard>
+      </group>
     </group>
   );
 }
@@ -165,72 +252,100 @@ export default function HostPage() {
   };
 
   return (
-    <div style={{ width: '100vw', height: '100vh', background: 'linear-gradient(180deg, #1a1a1a 0%, #2a2420 50%, #1a1a1a 100%)' }}>
+    <div style={{ width: '100vw', height: '100vh', background: 'radial-gradient(ellipse at 50% 35%, #0c0a14 0%, #030305 60%, #000000 100%)' }}>
       <Canvas
         shadows dpr={[1, 2]}
-        gl={{ antialias: true, powerPreference: "high-performance", preserveDrawingBuffer: true }}
+        gl={{ antialias: true, powerPreference: "high-performance", preserveDrawingBuffer: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.2 }}
       >
-        <fog attach="fog" args={['#2a2420', 150, 350]} />
-        <PerspectiveCamera makeDefault position={[0, 22, 90]} fov={50} />
+        {/* 🌌 Derin uzay — siyah değil, çok koyu lacivert */}
+        <color attach="background" args={['#050508']} />
+        <fog attach="fog" args={['#050508', 150, 400]} />
+
+        <PerspectiveCamera makeDefault position={[0, 24, 70]} fov={44} />
         <OrbitControls
-          maxPolarAngle={Math.PI / 1.5} minPolarAngle={Math.PI / 6}
-          minDistance={15} maxDistance={150} target={[0, 22, 0]}
+          maxPolarAngle={Math.PI / 1.8} minPolarAngle={Math.PI / 5}
+          minDistance={30} maxDistance={100} target={[0, 22, 0]}
           enableDamping dampingFactor={0.05}
-          minAzimuthAngle={-Math.PI / 2} maxAzimuthAngle={Math.PI / 2}
+          minAzimuthAngle={-Math.PI / 4} maxAzimuthAngle={Math.PI / 4}
         />
 
-        {/* 🌟 Premium Aydınlatma */}
-        <ambientLight intensity={0.6} color="#ffeedd" />
-        <spotLight position={[0, 50, 70]} angle={0.6} penumbra={0.5} intensity={18}
-          castShadow shadow-mapSize-width={2048} shadow-mapSize-height={2048} color="#fff5e6" />
-        <pointLight position={[30, 40, 40]} intensity={6} color="#ffd4a8" />
-        <pointLight position={[-30, 40, 40]} intensity={6} color="#ffd4a8" />
-        {/* Altın vurgu ışığı */}
-        <spotLight position={[0, 80, -10]} angle={0.5} penumbra={1} intensity={20} color="#ffd700" />
-        {/* Alt dolgu ışığı */}
-        <pointLight position={[0, -5, 60]} intensity={3} color="#ffaa66" />
+        {/* ═══════════════════════════════════════════════════ */}
+        {/* 🌟 MÜZE AYDINLATMASI — Halı yıldız, sahne karanlık */}
+        {/* ═══════════════════════════════════════════════════ */}
 
-        <group rotation={[0, Math.PI, -Math.PI / 2]} position={[45, 20, 0]} scale={2.0}>
-          <MegaCarpetWrapper socket={socket} />
-        </group>
+        {/* Ambient — yeterince aydınlık ama dramatik */}
+        <ambientLight intensity={0.5} color="#e8dcc8" />
 
-        <group position={[0, 58, 0]}>
-          <Text fontSize={6} color="#222" anchorX="center" anchorY="middle" letterSpacing={0.25}>
+        {/* ☀️ Ana müze spot — üstten, geniş, sıcak beyaz */}
+        <spotLight
+          position={[5, 70, 50]} angle={0.55} penumbra={0.6}
+          intensity={60} castShadow
+          shadow-mapSize-width={2048} shadow-mapSize-height={2048}
+          color="#fff8f0"
+          target-position={[0, 22, 0]}
+        />
+
+        {/* 🌙 İkinci spot — hafif yandan, derinlik veren */}
+        <spotLight
+          position={[-30, 55, 35]} angle={0.5} penumbra={0.8}
+          intensity={25} color="#ffe4c4"
+        />
+
+        {/* ✨ Altın backlight — arkadan halo yaratır */}
+        <spotLight
+          position={[0, 40, -20]} angle={0.7} penumbra={1}
+          intensity={20} color="#ffd700"
+        />
+
+        {/* Simetrik kenar fill ışıkları */}
+        <pointLight position={[50, 30, 30]} intensity={8} color="#ffeedd" distance={100} decay={2} />
+        <pointLight position={[-50, 30, 30]} intensity={8} color="#ffeedd" distance={100} decay={2} />
+
+        {/* Alt rim — halı kenarlarını aydınlatır */}
+        <pointLight position={[0, 0, 50]} intensity={4} color="#e8c99a" distance={80} decay={2} />
+
+        {/* ═══════════════════════════════════════════════════ */}
+        {/* 🧶 SAHNEDEKİ NESNELER                              */}
+        {/* ═══════════════════════════════════════════════════ */}
+
+        {/* 🌟 Halının arkasında sıcak halo glow */}
+        <BackdropGlow />
+
+        {/* ✨ Havada süzülen altın toz parçacıkları */}
+        <FloatingDust count={60} />
+
+        {/* 🧶 HALI — nefes alan, boşlukta süzülen */}
+        <BreathingCarpet socket={socket} />
+
+        {/* ✨ Başlık — halının hemen üstünde, zarif */}
+        <group position={[0, 46, 1]}>
+          <Text
+            fontSize={3.2} anchorX="center" anchorY="middle"
+            letterSpacing={0.5}
+          >
             DİJİTAL MOTİF ATÖLYESİ
-            <meshStandardMaterial color="#d4af37" metalness={0.9} roughness={0.1} />
+            <meshStandardMaterial
+              color="#f0d880" metalness={0.3} roughness={0.4}
+              emissive="#d4af37" emissiveIntensity={0.5}
+            />
           </Text>
-          <Text position={[0, -5, 0]} fontSize={1.4} color="#555" anchorX="center" anchorY="middle" letterSpacing={0.4}>
+          <Text
+            position={[0, -3.5, 0]} fontSize={0.9}
+            anchorX="center" anchorY="middle" letterSpacing={1.0}
+          >
             İNTERAKTİF KOLEKTİF SANAT DENEYİMİ
+            <meshStandardMaterial
+              color="#c0b8a0" metalness={0.1} roughness={0.5}
+              emissive="#a09070" emissiveIntensity={0.3}
+              transparent opacity={0.85}
+            />
           </Text>
         </group>
 
-        {/* Duvarlar */}
-        <mesh position={[0, 22, -2]} receiveShadow>
-          <planeGeometry args={[200, 100]} />
-          <meshStandardMaterial color="#f5f0e8" roughness={0.9} />
-        </mesh>
-        <mesh position={[-80, 22, 50]} rotation={[0, Math.PI / 2, 0]} receiveShadow>
-          <planeGeometry args={[100, 100]} />
-          <meshStandardMaterial color="#ede8df" roughness={0.9} />
-        </mesh>
-        <mesh position={[80, 22, 50]} rotation={[0, -Math.PI / 2, 0]} receiveShadow>
-          <planeGeometry args={[100, 100]} />
-          <meshStandardMaterial color="#ede8df" roughness={0.9} />
-        </mesh>
-        {/* Tavan */}
-        <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 72, 50]}>
-          <planeGeometry args={[200, 150]} />
-          <meshStandardMaterial color="#e8e4dc" roughness={0.95} />
-        </mesh>
-        {/* Zemin */}
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -8, 50]} receiveShadow>
-          <planeGeometry args={[200, 150]} />
-          <meshStandardMaterial map={WOOD_TEXTURE} roughness={0.4} metalness={0.2} />
-        </mesh>
-
+        {/* 🎬 Post-Processing — Sinematik glow */}
         <EffectComposer disableNormalPass>
-          <Bloom luminanceThreshold={0.7} mipLevels={9} intensity={1.5} radius={0.8} />
-          <Vignette eskil={false} offset={0.15} darkness={0.7} />
+          <Bloom luminanceThreshold={0.3} mipLevels={9} intensity={1.8} radius={0.9} />
+          <Vignette eskil={false} offset={0.12} darkness={0.75} />
         </EffectComposer>
       </Canvas>
 

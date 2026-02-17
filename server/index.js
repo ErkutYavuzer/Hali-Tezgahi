@@ -100,8 +100,8 @@ function saveData() {
 }
 
 // 🎯 Dinamik ızgara yerleştirme (dokumacı sayısına göre otomatik boyut)
-const TEX_W = 1600;
-const TEX_H = 2667;
+const TEX_W = 2400;
+const TEX_H = 4000;
 const PAD = 5;
 
 // Dokumacı sayısına göre en uygun ızgara düzenini hesapla
@@ -197,7 +197,17 @@ io.on('connection', (socket) => {
   });
 
   // 🎨 Yeni çizim geldi
-  socket.on('drawing-data', (dataUrl) => {
+  socket.on('drawing-data', (payload) => {
+    // Backward compat: eski format string, yeni format obje
+    let dataUrl, userName;
+    if (typeof payload === 'string') {
+      dataUrl = payload;
+      userName = 'Anonim';
+    } else {
+      dataUrl = payload?.dataUrl;
+      userName = payload?.userName || 'Anonim';
+    }
+
     if (!dataUrl || typeof dataUrl !== 'string') return;
 
     // ⏱️ Rate limiting — aynı kullanıcıdan max 1 çizim/3sn
@@ -220,6 +230,7 @@ io.on('connection', (socket) => {
     const drawing = {
       id: Date.now() + '_' + Math.random().toString(36).substr(2, 6),
       dataUrl,
+      userName,
       aiDataUrl: null,
       aiStatus: 'none',
       ...placement,
@@ -239,7 +250,7 @@ io.on('connection', (socket) => {
       setTimeout(() => io.emit('carpet-complete', { total: MAX_DRAWINGS }), 500);
     }
 
-    console.log(`🎨 Yeni çizim! Toplam: ${drawings.length}/${MAX_DRAWINGS}`);
+    console.log(`🎨 Yeni çizim! [${userName}] Toplam: ${drawings.length}/${MAX_DRAWINGS}`);
 
     // 🤖 AI motif dönüşümü (async — bloklamaz)
     if (aiEnabled) {
@@ -255,6 +266,7 @@ io.on('connection', (socket) => {
             io.emit('ai-drawing-ready', {
               id: drawing.id,
               aiDataUrl,
+              userName: drawing.userName,
               x: drawing.x,
               y: drawing.y,
               width: drawing.width,

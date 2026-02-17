@@ -4,14 +4,14 @@ export const CONFIG = {
     CARPET_DEPTH: 40,   // Eski: 10 * 4 = 40
 
     // Çizim canvas çözünürlüğü
-    CANVAS_RESOLUTION: 768,
+    CANVAS_RESOLUTION: 1024,
 
     // Halı texture çözünürlüğü (host tarafı)
-    TEXTURE_WIDTH: 1600,
-    TEXTURE_HEIGHT: 2667,      // 24:40 oran (yüksek çözünürlük)
+    TEXTURE_WIDTH: 2400,
+    TEXTURE_HEIGHT: 4000,      // 24:40 oran (yüksek çözünürlük)
 
     // Çizim yerleştirme
-    DRAWING_SCALE: 0.25,       // Çizim halıya ne kadar küçültülecek
+    DRAWING_SCALE: 0.35,       // Motifler daha büyük ve detaylı
     MAX_DRAWINGS: 60,          // Max çizim sayısı
 
     // Eski uyumluluk

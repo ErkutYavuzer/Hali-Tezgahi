@@ -80,6 +80,7 @@ export default function ClientPage() {
   const [connected, setConnected] = useState(false);
   const [sendState, setSendState] = useState('idle'); // idle | sending | success
   const [activeCat, setActiveCat] = useState(0);
+  const [userName, setUserName] = useState(() => localStorage.getItem('carpet-user-name') || '');
 
   // Canvas başlat
   useEffect(() => {
@@ -431,7 +432,7 @@ export default function ClientPage() {
     // 📦 PNG — şeffaflık korunur (JPEG siyah yapıyordu!)
     const dataUrl = canvas.toDataURL('image/png');
 
-    socketRef.current.emit('drawing-data', dataUrl);
+    socketRef.current.emit('drawing-data', { dataUrl, userName: userName.trim() || 'Anonim' });
 
     // Başarı animasyonu
     setTimeout(() => {
@@ -808,6 +809,40 @@ export default function ClientPage() {
         padding: '0 0 env(safe-area-inset-bottom, 10px)',
         animation: 'fadeInUp 1.1s ease',
       }}>
+        {/* ✍️ İsim Girişi */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '8px',
+          marginBottom: '8px', width: '100%',
+        }}>
+          <span style={{ fontSize: '14px' }}>✍️</span>
+          <input
+            type="text"
+            value={userName}
+            onChange={(e) => {
+              setUserName(e.target.value);
+              localStorage.setItem('carpet-user-name', e.target.value);
+            }}
+            placeholder="Adınızı yazın..."
+            style={{
+              flex: 1, padding: '10px 14px', borderRadius: '12px',
+              border: '1px solid rgba(255,215,0,0.2)',
+              background: 'rgba(255,255,255,0.05)',
+              color: '#e8dcc8', fontSize: '14px', fontFamily: 'inherit',
+              fontWeight: '500', outline: 'none',
+              transition: 'border 0.3s, background 0.3s',
+            }}
+            onFocus={(e) => {
+              e.target.style.borderColor = 'rgba(255,215,0,0.5)';
+              e.target.style.background = 'rgba(255,255,255,0.08)';
+            }}
+            onBlur={(e) => {
+              e.target.style.borderColor = 'rgba(255,215,0,0.2)';
+              e.target.style.background = 'rgba(255,255,255,0.05)';
+            }}
+            maxLength={30}
+          />
+        </div>
+
         {/* Temizle */}
         <button onClick={clearCanvas} style={{
           flex: 1, padding: '16px', borderRadius: '16px',
