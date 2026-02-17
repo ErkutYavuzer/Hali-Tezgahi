@@ -1,22 +1,23 @@
 # Halı Tezgahı — Proje Hafızası
 
-> Son güncelleme: 2026-02-17T17:24:00+03:00
-> Mevcut versiyon: **v5.0.1** (web), **v4.7.0** (socket)
+> Son güncelleme: 2026-02-17T20:06:00+03:00
+> Mevcut versiyon: **v6.5.3** (web), **v6.5.1** (socket)
 > Deployed: Kubernetes (`hali-mozaik` namespace)
 
 ---
 
 ## 📦 Proje Genel Bakış
 
-**Halı Tezgahı** — Interaktif dijital halı dokuma deneyimi. Ziyaretçiler telefonla çizim yapıyor, çizimlerin pikselleri 3D animasyonla halıya uçarak konuyor ve AI bir kilim motifine dönüştürüyor.
+**Halı Tezgahı** — Interaktif dijital halı dokuma deneyimi. Ziyaretçiler telefonla çizim yapıyor, çizimlerin pikselleri 3D animasyonla halıya uçarak konuyor ve Gemini AI çizimi kilim motifine dönüştürüyor.
 
 ### Mimari
 
 ```
 [Telefon/Client]  ←→  [Socket.IO Server]  ←→  [Host/3D Halı Ekranı]
       ↓                     ↓
-  Çizim yapar          AI Pipeline
-                    (Gemini Flash)
+  Çizim yapar         AI Pipeline (img2img)
+                    Antigravity Gateway
+                  (gemini-3-pro-image-1x1)
 ```
 
 ### URL'ler
@@ -35,7 +36,7 @@
 Hali-Tezgahi/
 ├── server/
 │   ├── index.js              # Socket.IO server (Express + Socket.IO)
-│   ├── ai-motif.js           # AI motif pipeline (Gemini Flash)
+│   ├── ai-motif.js           # 🤖 AI motif pipeline v4 (Antigravity Gateway img2img)
 │   ├── carpet_data.json      # Çizim verisi (persist)
 │   └── carpet_latest.png     # Son halı screenshot
 ├── src/
@@ -43,166 +44,149 @@ Hali-Tezgahi/
 │   ├── ClientPage.jsx        # Telefon çizim sayfası
 │   ├── HostPage.jsx          # 3D halı host sayfası
 │   ├── DownloadPage.jsx      # Halı indirme sayfası
-│   ├── constants.js          # Konfigürasyon sabitleri
+│   ├── constants.js          # Konfigürasyon sabitleri (CARPET_WIDTH=40, CARPET_DEPTH=24)
 │   ├── audio/                # Ses efektleri
 │   └── components/3d/
 │       ├── CarpetBoard.jsx   # ⭐ ANA BİLEŞEN — 3D halı, canvas, flying pixels, AI motif
-│       ├── CarpetBorder.jsx  # Halı kenarlık 3D mesh
+│       ├── CarpetBorder.jsx  # Halı kenarlık + püsküller (kısa kenarda)
 │       ├── FlyingPixels.jsx  # 3D parçacık instanceleri
 │       └── materials.js      # Three.js shader/material tanımları
 ├── Dockerfile.web            # Frontend build (nginx serve)
-├── Dockerfile.socket         # Backend (Node.js)
+├── Dockerfile.socket         # Backend (Node.js + Antigravity Gateway env'leri)
 ├── vite.config.js            # Vite konfigürasyonu
 └── package.json
 ```
 
 ---
 
-## 🧶 CarpetBoard.jsx — Ana Bileşen Analizi (1057 satır)
+## 🤖 AI Motif Pipeline v4 (server/ai-motif.js)
 
-Bu dosya tüm işin kalbinde. İçerdiği ana sistemler:
-
-### 1. Canvas/Texture Sistemi
-
-- **Offscreen Canvas** (`offscreenCanvasRef`): 2534x4224 çözünürlük
-- Three.js `CanvasTexture` ile 3D mesh'e uygulanıyor
-- **Halı zemin**: `#f0e4d0` (krem) + 4px aralıklı iplik grid
-- `needsUpdateRef` → frame loop'ta texture güncelleme
-
-### 2. Woven Enhancement Sistemi (satır ~320-551)
-
-- `applyWovenEnhancement()`: Çizimi halı dokuma estetiğine dönüştürür
-  - **Mozaik grid** (4px blok)
-  - **Renk doygunluğu artırma** (+%60)
-  - **Kilim paleti quantization** (%50 orijinal + %50 palette)
-  - **Kenar algılama** (Sobel filtre)
-  - **3-katmanlı kilim çerçeve**: koyu kahve + altın şerit + lacivert
-  - **Köşe motifleri**: çift baklava dilimi
-  - **Kenar göz motifleri** (nazarlık)
-- `drawEye()`: Göz motifi helper
-
-### 3. İsim Yazma (satır ~570-594)
-
-- `renderWovenName()`: İsmi motifin **sağ alt köşesine** yazar
-  - Georgia/serif font, altın-kahverengi renk
-  - İplik dokusu efekti (üzerinden yatay çizgiler)
-  - `textAlign: 'right'`, `textBaseline: 'bottom'`
-
-### 4. drawWovenImage (satır ~597-634)
-
-- `drawWovenImage()`: Initial-carpet yüklemesi için animasyonsuz direkt çizim
-  - 1) `drawImage` → 2) `applyWovenEnhancement` → 3) `renderWovenName`
-  - Bağımlılıklar: `[renderWovenName, applyWovenEnhancement]`
-
-### 5. Uçan Piksel Sistemi (satır ~636-796)
-
-- `canvasToWorld()`: Canvas koordinat → 3D world koordinat
-- `launchFlyingPixels(drawing)`: Çizimi piksellere ayırıp 3D uçuş yörüngesine sokar
-  - 3 uçuş stili: Spiral, Dalga, Kaskad
-  - LAND_BLOCK = 12px bloklar
-  - Pikseller `flyingQueueRef`'e ekleniyor
-  - **Post-landing timer**: `pendingEnhancementsRef` ile pikseller konduktan sonra:
-    - `applyWovenEnhancement()` çağrılıyor
-    - `renderWovenName()` çağrılıyor
-  - Bağımlılıklar: `[canvasToWorld, carpetWidth, carpetDepth, renderWovenName, applyWovenEnhancement]`
-
-### 6. handleLand (satır ~798-838)
-
-- `handleLand(item)`: Her piksel konduğunda canvas'a canlı renk + glow çizer
-  - LAND_BLOCK = 12px blok olarak yazar
-  - %30 opak glow efekti
-
-### 7. AI Motif Dönüşümü (satır ~840-900)
-
-- `morphToAIMotif()`: AI motif geldiğinde:
-  - 1) `pendingEnhancementsRef` timer'ı iptal et
-  - 1) Geniş alan temizle (%50 pad): `clearRect` → halı zemin → iplik grid
-  - 1) `drawImage` ile AI motif yerleştir
-  - 1) `renderWovenName` ile isim yaz
-  - Bağımlılıklar: `[renderWovenName]`
-
-### 8. Socket Event Handler'ları (satır ~935-1019)
-
-```javascript
-useEffect(() => {
-    socket.on('initial-carpet', ({ drawings }) => {
-        // AI olanlar → direkt drawImage (AI'ya gitmez)
-        // AI olmayanlar → drawWovenImage (direkt göster)
-    });
-    
-    socket.on('new-drawing', (drawing) => {
-        launchFlyingPixels(drawing);  // Yeni çizim = flying pixels animasyonu
-    });
-    
-    socket.on('ai-drawing-ready', (data) => {
-        morphToAIMotif(data);  // AI geldi = replace
-    });
-    
-    socket.on('carpet-reset', () => { ... });
-    
-    // Mount sonrası veri iste
-    socket.emit('request-initial-carpet');
-}, [socket, drawWovenImage, launchFlyingPixels, morphToAIMotif, renderWovenName]);
-```
-
----
-
-## 🤖 AI Motif Pipeline (server/ai-motif.js)
-
-### Akış
+### Akış — Tek Adım img2img Dönüşümü
 
 ```
 1. Çizim geldi → transformToMotif(base64DataUrl)
-2. STEP 1: gemini-3-flash ile çizimi ANALIZ et → "SUBJECT: sun, COLOR: yellow"
-3. STEP 2: Aynı model ile kilim motifi SVG üret (256x256)
-4. FALLBACK: Subject-specific hardcoded SVG motifler
-5. SVG → base64 → data:image/svg+xml;base64,... olarak döner
+2. Orijinal çizim + TRANSFORM_PROMPT → gemini-3-pro-image-1x1
+3. AI orijinal şekli GÖREREK kilim motifine dönüştürüyor
+4. data:image/jpeg;base64,... olarak döner
 ```
+
+### Önemli: Orijinal çizim DOĞRUDAN modele gönderiliyor (image_url)
+
+Bu sayede:
+
+- Ev çizilmişse → ev şeklinde kilim motifi
+- Kedi çizilmişse → kedi şeklinde kilim motifi
+- Yıldız çizilmişse → yıldız şeklinde kilim motifi
 
 ### Konfigürasyon
 
-- **API**: `https://antigravity2.mindops.net/v1/chat/completions`
-- **Model**: `gemini-3-flash`
-- **Timeout**: 90sn
-- **Max concurrent**: 3
-- **Retry**: 2 kez
+| Parametre | Değer |
+|-----------|-------|
+| **Gateway URL** | `https://antigravity2.mindops.net/v1/chat/completions` |
+| **API Key** | `sk-antigravity-lejyon-2026` |
+| **Image Model** | `gemini-3-pro-image-1x1` |
+| **Max concurrent** | 2 |
+| **Response format** | `![image](data:image/jpeg;base64,...)` (markdown içinde) |
 
-### Subject-Specific Guide'lar
+### Transform Prompt (anahtar kurallar)
 
-`sun`, `flower`, `heart`, `star`, `house`, `tree`, `cat`, `butterfly`, `fish`, `rainbow`, `moon`, `bird` için özel SVG kompozisyon talimatları var.
+1. KEEP the same subject/shape from the drawing
+2. Convert to geometric kilim style: stepped lines, diamonds, triangles, zigzag
+3. Traditional Turkish kilim color palette
+4. Add decorative kilim border frame
+5. Flat, textile-like coloring — no gradients, no 3D effects
+6. Square format, centered composition
 
-### Kilim Renk Paleti
+### Önceki Denemeler ve Neden Bırakıldı
 
+| Versiyon | Yaklaşım | Sorun |
+|----------|----------|-------|
+| v1 | Gemini text → SVG üretimi | Konu korunmuyordu, generic SVG |
+| v2 | @google/genai SDK (gemini-2.5-flash-image) | Model ismi hatalı (404), sonra quota aşıldı (429) |
+| v3 | Antigravity Gateway: 2 adım (analiz + üretim) | Çizimle alakasız motif çıkıyordu |
+| **v4** | **Antigravity Gateway: tek adım img2img** | ✅ **Çalışıyor!** Orijinal şekli koruyor |
+
+---
+
+## 🧶 CarpetBoard.jsx — Ana Bileşen
+
+### Halı Shader (minimal kumaş hissi)
+
+- **Vertex**: Çok hafif fiber doku (0.3 intensity, 0.008 displacement)
+- **Fragment**: Neredeyse görünmez iplik hissi (0.015), hafif saturation (1.3x), rim light
+- ❌ **Kaldırılanlar**: Warp-weft grid, knot variation, abrash, pile direction (çok agresifti, damalı desen oluşturuyordu)
+
+### applyWovenEnhancement — KALDIRILDI ❌
+
+- Tüm `applyWovenEnhancement` çağrıları kaldırıldı
+- Bu fonksiyon orijinal çizimi block-averaging ile bozuyordu
+- Artık çizimler olduğu gibi gösteriliyor, dönüşüm tamamen AI'a bırakıldı
+
+### morphToAIMotif (AI motif yerleştirme)
+
+```javascript
+// Sadece çizim alanını temizle — yanındaki motiflere DOKUNMA
+const pad = 2; // Minimal padding (anti-alias artıkları)
+ctx.clearRect(clearX, clearY, clearW, clearH);
+ctx.fillStyle = '#f0e4d0'; // krem zemin
+ctx.fillRect(clearX, clearY, clearW, clearH);
+ctx.drawImage(aiImg, x, y, width, height);
 ```
-yellow: #c8a951, red: #c41e3a, blue: #1a3a6b
-green: #2d5a27, orange: #e8a23e, purple: #7b2d4f
-Background: #f5f0e8, Border: #5c1a0a, Gold: #c8a951
-```
+
+**ÖNEMLİ**: Padding eskiden `width * 0.5` idi → yanındaki motifleri siliyordu. Şimdi `2px`.
+
+### Canvas Zemin
+
+- Düz krem `#f0e4d0` + çok hafif grid (opacity 0.025, 6px aralık)
+- Grid shader'da değil, canvas init'te
+
+---
+
+## 🎨 CarpetBorder.jsx — Kenarlık ve Püsküller
+
+### Püsküller (CarpetFringes)
+
+- ✅ **Kısa kenarda** (sol ve sağ → X ekseni uçları)
+- Depth boyunca diziliyor (Z ekseni)
+- `FRINGE_GEO`: CylinderGeometry(0.005, 0.018, 0.7, 6)
+- Rastgele pozisyon, rotasyon, ölçek varyasyonu
+
+### Kenarlık (CarpetBorder)
+
+- 4 kenar mesh (üst, alt, sol, sağ)
+- 4 köşe süsü (altın metalik)
+- `BORDER_WIDTH = 0.4`
 
 ---
 
 ## 🚀 Deployment
 
-### Docker Images
+### Docker Images (Güncel)
 
-| Image | Açıklama |
-|-------|----------|
-| `ghcr.io/ayavuzer/hali-mozaik-web:v5.0.1` | Frontend (Vite build + nginx) |
-| `ghcr.io/ayavuzer/hali-mozaik-socket:v4.7.0` | Socket.IO server |
+| Image | Versiyon | Açıklama |
+|-------|----------|----------|
+| `ghcr.io/ayavuzer/hali-mozaik-web` | **v6.5.3** | Frontend (Vite build + nginx) |
+| `ghcr.io/ayavuzer/hali-mozaik-socket` | **v6.5.1** | Socket.IO server + AI pipeline |
 
 ### Kubernetes (namespace: hali-mozaik)
 
 | Resource | Image |
 |----------|-------|
-| `deployment/hali-mozaik-web` | `ghcr.io/ayavuzer/hali-mozaik-web:v5.0.1` |
-| `deployment/hali-mozaik-socket` | `ghcr.io/ayavuzer/hali-mozaik-socket:v4.7.0` |
+| `deployment/hali-mozaik-web` | `ghcr.io/ayavuzer/hali-mozaik-web:v6.5.3` |
+| `deployment/hali-mozaik-socket` | `ghcr.io/ayavuzer/hali-mozaik-socket:v6.5.1` |
+
+### Env Variables (Socket Pod)
+
+```
+AI_API_URL=https://antigravity2.mindops.net/v1/chat/completions
+AI_API_KEY=sk-antigravity-lejyon-2026
+```
 
 ### Build & Deploy Komutları
 
 ```bash
 # Web build + push
 cd /Users/aliyavuzer/Hali-Tezgahi
-npm run build
 docker buildx build --platform linux/amd64 -t ghcr.io/ayavuzer/hali-mozaik-web:vX.X.X -t ghcr.io/ayavuzer/hali-mozaik-web:latest --push -f Dockerfile.web .
 
 # Socket build + push
@@ -211,116 +195,95 @@ docker buildx build --platform linux/amd64 -t ghcr.io/ayavuzer/hali-mozaik-socke
 # Deploy
 kubectl set image deployment/hali-mozaik-web web=ghcr.io/ayavuzer/hali-mozaik-web:vX.X.X -n hali-mozaik
 kubectl set image deployment/hali-mozaik-socket socket=ghcr.io/ayavuzer/hali-mozaik-socket:vX.X.X -n hali-mozaik
-kubectl rollout status deployment/hali-mozaik-web -n hali-mozaik
+
+# Çizimleri sıfırla (bellek temizleme)
+kubectl rollout restart deployment/hali-mozaik-socket -n hali-mozaik
 ```
 
 ---
 
-## 🐛 MEVCUT BUG — ÖNCELİKLİ
+## 📋 Tamamlanan İşler (17 Şubat 2026 — Bu Oturum)
 
-### Bug: Hem orijinal hem AI motif görünmüyor (v5.0.1)
+### AI Motif Pipeline
 
-**Belirtiler:**
+1. ✅ @google/genai SDK ile Gemini native image generation denendi → quota sorunu
+2. ✅ Model ismi düzeltildi: `gemini-2.5-flash-preview-04-17` → `gemini-2.5-flash-image`
+3. ✅ Google AI Studio API quota aşıldı → Antigravity Gateway'e geçildi
+4. ✅ 2 adımlı pipeline (analiz + üretim) → çizimle alakasız motif çıkıyordu
+5. ✅ **Tek adım img2img pipeline** → orijinal çizim doğrudan modele gönderiliyor
+6. ✅ `gemini-3-pro-image-1x1` ile kilim motifine dönüşüm **ÇALIŞIYOR** ✨
+7. ✅ Rate limit sonsuz döngü düzeltildi (retry limiti eklendi)
 
-1. Yeni çizim gönderildiğinde orijinal çizim halıda görünmüyor
-2. AI motifi de görünmüyor
-3. Sayfa yenilendiğinde hiçbir çizim görünmüyor
-4. Socket loglarında AI pipeline başarılı çalışıyor (✅ mesajları var)
+### Görsel İyileştirmeler
 
-**Olası Nedenler (araştırılmadı, sonraki oturumda debug edilecek):**
+1. ✅ `applyWovenEnhancement` tamamen kaldırıldı (çizimleri bozuyordu)
+2. ✅ Shader grid (warp-weft, knot, abrash) kaldırıldı → temiz krem halı
+3. ✅ AI motif padding %50 → 2px (yanındaki motifler artık silinmiyor)
+4. ✅ Püsküller kısa kenara taşındı (gerçek halı gibi)
 
-1. **`applyWovenEnhancement` veya `renderWovenName` exception fırlatıyor olabilir** — canvas context'i bozuyor, sonraki tüm drawImage çağrıları sessizce başarısız oluyor
-2. **useCallback dependency chain sorunu** — `drawWovenImage` bağımlılığı `[renderWovenName, applyWovenEnhancement]`, bunlar her render'da yeniden oluşuyorsa infinite re-render veya stale closure
-3. **Canvas context restore edilmiyor** — `ctx.save()/restore()` dengesizliği, globalAlpha veya compositeOperation kalıcı olarak bozuluyor
-4. **`drawEye` fonksiyonu useCallback değil** — her render'da yeniden oluşuyor, dependency chain bozuluyor
+### Önceki Oturumlardan
 
-**Debug Planı (sonraki oturum):**
-
-1. Browser konsolunu kontrol et (`https://hali-mozaik.mindops.net/host`)
-2. `drawWovenImage`, `morphToAIMotif` fonksiyonlarına try/catch ekle
-3. `applyWovenEnhancement` etrafına try/catch ekle — hata varsa logla ama canvas'ı bozma
-4. `drawEye` fonksiyonunu `useCallback` ile sar
-5. Geçici olarak `applyWovenEnhancement`'ı tamamen devre dışı bırakıp sadece `drawImage` test et
-
-**Hızlı Test:**
-
-```javascript
-// morphToAIMotif'dan applyWovenEnhancement'ı çıkarıp sadece şu kalsın:
-ctx.drawImage(aiImg, x, y, width, height);
-renderWovenName(ctx, userName, x, y, width, height);
-```
-
----
-
-## 📋 Tamamlanan İşler (Bu Oturum — 17 Şubat 2026)
-
-### Başarılı
-
-1. ✅ AI motif pipeline yeniden yazıldı (gemini-3-flash + subject analysis)
-2. ✅ AI motif overlay → replace dönüşümü (clearRect + drawImage)
-3. ✅ Orijinal çizim taşması düzeltmesi (%50 geniş alan clearRect)
-4. ✅ Dönen ışık efekti eklendi (sonra kullanıcı beğenmediği için kaldırıldı)
-5. ✅ initial-carpet: AI olanlar direkt göster (re-processing yok)
-6. ✅ initial-carpet: AI olmayanlar drawWovenImage ile göster
-
-### Kaldırılan
-
-1. ❌ Dönen ışık efekti (`startSpinningLight`) — kullanıcı beğenmedi
-2. ❌ Snapshot sistemi (`drawingSnapshotsRef`, `spinningLightsRef`) — karmaşıklık yarattı
-
-### Mevcut Sorun
-
-1. 🐛 Hiçbir çizim/motif görünmüyor — debug gerekiyor
+1. ✅ Flying pixels 3D animasyon sistemi
+2. ✅ AI motif → orijinali TAM DEĞİŞTİRME (overlay değil)
+3. ✅ initial-carpet: AI olanlar direkt göster (re-processing yok)
+4. ✅ İsim sağ alt köşede (Georgia serif, iplik doku efekti)
 
 ---
 
 ## 📝 Tasarım Kararları ve Kurallar
 
 1. **AI motifi orijinali TAM DEĞİŞTİRMELİ** — overlay/blend değil, replace
-2. **Sayfa yenilenince AI tekrar çalışmamalı** — AI sonucu persist ediliyor, direkt gösterilmeli
-3. **İsim sağ alt köşede** — Georgia serif, iplik dokusu efekti
-4. **Dönen ışık efekti İSTENMİYOR** — kullanıcı beğenmedi, kaldırıldı
-5. **Flying pixels sadece yeni çizimler için** — initial load'da direkt çizim
-6. **Woven enhancement (cross-stitch efekti) orijinal çizimlerde OLMALI** — AI motifinde olmamalı
-7. **AI motif tam kilim stili** — SVG, geometrik şekiller, 256x256
+2. **Orijinal çizim AI'a doğrudan gönderilmeli** — img2img yaklaşımı (şekil korunsun)
+3. **applyWovenEnhancement KULLANILMAMALI** — kaldırıldı, çizimi bozuyor
+4. **Shader minimal olmalı** — agresif grid desen oluşturuyor, hafif kumaş hissi yeterli
+5. **morphToAIMotif padding minimal (2px)** — %50 padding yanındaki motifleri siliyor
+6. **Püsküller kısa kenarda olmalı** — gerçek Anadolu halıları gibi
+7. **Antigravity Gateway kullan, direkt Google API değil** — quota sorunu yok
+8. **Sayfa yenilenince AI tekrar çalışmamalı** — AI sonucu persist ediliyor
+9. **İsim sağ alt köşede** — Georgia serif, iplik dokusu efekti
+10. **Dönen ışık efekti İSTENMİYOR** — kullanıcı beğenmedi, kaldırıldı
 
 ---
 
 ## 🔄 Git History (Son Commitler)
 
 ```
-1fbb231 fix: woven enhancement geri eklendi + initial-carpet düzeltildi
-dcb67ac refactor: dönen ışık tamamen kaldırıldı — basit ve temiz akış
-a68ef80 fix: sayfa yenilenince AI'sı hazır çizimler direkt gösteriliyor
-84971a6 fix: orijinal çizim taşması temizleniyor — %50 geniş alan clearRect
-32bc01e feat: dönen ışık efekti + AI motif tam değiştirme
-31d4b6c fix: AI motif artık orijinal çizimi tamamen DEĞİŞTİRİYOR
-c220d62 fix: gemini-3-flash + subject-specific fallback motifler
-53e0d63 feat: AI motif pipeline tamamen yeniden yazıldı
-c590136 feat: profesyonel dokuma motif dönüşümü
-d1a1604 feat: arka zemin kaldırıldı — halı siyah boşlukta
+d6abac9 fix: püsküller kısa kenara taşındı — gerçek halı gibi
+399977c fix: AI motif padding %50→2px — yanındaki motifler artık silinmeyecek
+469d50f fix: img2img — orijinal çizim doğrudan modele gönderiliyor
+d4029b2 feat: AI motif v3 — Antigravity Gateway ile çalışıyor
+5b7f0a4 fix: AI retry limiti + detaylı hata loglaması
+0633704 fix: model ismi düzeltildi → gemini-2.5-flash-image
+52b9b1f fix: shader grid kaldırıldı — temiz krem halı zemini
+0787927 fix: applyWovenEnhancement kaldırıldı — temiz halı + AI dönüşüm
+eac3e9a feat: AI motif v2 — Gemini native image generation
 ```
 
 ---
 
 ## 🔧 Sonraki Oturum İçin Yapılacaklar
 
-### Öncelik 1: Bug Fix
+### Öncelik 1: UX İyileştirmeleri
 
-- [ ] Browser console hatalarını kontrol et
-- [ ] `applyWovenEnhancement` etrafına try/catch ekle
-- [ ] `drawEye` fonksiyonunu useCallback ile sar
-- [ ] Canvas context save/restore dengesini kontrol et
-- [ ] Minimal test: sadece drawImage + renderWovenName (enhancement olmadan)
+- [ ] AI motif geliş animasyonu (fade-in veya progressive reveal)
+- [ ] Çizim yapılırken "AI dönüştürülüyor..." loading göstergesi
+- [ ] Birden fazla çizim güzel dizilim/grid optimizasyonu
 
-### Öncelik 2: İyileştirmeler
+### Öncelik 2: Visual Polish
 
-- [ ] AI motif transition efekti (fade-in veya progressive reveal)
-- [ ] Birden fazla çizim çakışma kontrolü
-- [ ] Kilim tamamlandığında kutlama ekranı iyileştirmesi
+- [ ] Halı kenarlığına zarif kilim border deseni (düz kırmızı yerine)
+- [ ] Ambiyans ışığı ve gölge iyileştirmesi
+- [ ] Kamera açısı/zoom ayarı
 
-### Öncelik 3: Performans
+### Öncelik 3: Performans & Robustness
 
-- [ ] Canvas texture güncelleme optimizasyonu
-- [ ] SVG motif caching (aynı subject tekrar gelirse)
+- [ ] AI motif caching (aynı çizim tekrar gelirse)
 - [ ] Flying pixels performans profiling
+- [ ] Error recovery: AI başarısız olursa orijinal çizimi koru ve göster
+- [ ] Socket reconnection handling
+
+### Öncelik 4: Yeni Özellikler
+
+- [ ] Halı tamamlandığında kutlama ekranı
+- [ ] Çizim silme/geri alma (host kontrolü)
+- [ ] Farklı halı boyutları/şekilleri
