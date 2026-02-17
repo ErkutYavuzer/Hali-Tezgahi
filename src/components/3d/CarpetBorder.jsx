@@ -64,8 +64,8 @@ export function CarpetBorder({ width, depth }) {
 
 export function CarpetFringes({ width, depth }) {
     const meshRef = useRef();
-    const totalWidth = width + BORDER_WIDTH * 2;
-    const count = Math.ceil(totalWidth / 0.035) * 2 + 600;
+    const totalDepth = depth + BORDER_WIDTH * 2;
+    const count = Math.ceil(totalDepth / 0.035) * 2 + 600;
     const dummy = useMemo(() => new THREE.Object3D(), []);
 
     useEffect(() => {
@@ -73,25 +73,26 @@ export function CarpetFringes({ width, depth }) {
 
         let index = 0;
 
-        const generateFringes = (zPos, baseRot) => {
-            for (let x = -totalWidth / 2; x <= totalWidth / 2; x += 0.035) {
-                const randX = (Math.random() - 0.5) * 0.03;
-                const randZ = (Math.random() - 0.5) * 0.05;
+        // Kısa kenar boyunca püskül dizme (Z ekseni boyunca, X uçlarında)
+        const generateFringes = (xPos, baseRot) => {
+            for (let z = -totalDepth / 2; z <= totalDepth / 2; z += 0.035) {
+                const randX = (Math.random() - 0.5) * 0.05;
+                const randZ = (Math.random() - 0.5) * 0.03;
                 const randRotZ = (Math.random() - 0.5) * 0.4;
                 const randRotX = (Math.random() - 0.5) * 0.2;
                 const scale = 0.8 + Math.random() * 0.4;
 
-                dummy.position.set(x + randX, -0.02, zPos + randZ);
-                dummy.rotation.set(baseRot + randRotX, 0, randRotZ);
+                dummy.position.set(xPos + randX, -0.02, z + randZ);
+                dummy.rotation.set(randRotX, 0, baseRot + randRotZ);
                 dummy.scale.set(1, scale, 1);
                 dummy.updateMatrix();
                 meshRef.current.setMatrixAt(index++, dummy.matrix);
             }
         };
 
-        // Üst ve Alt Püsküller
-        generateFringes(-depth / 2 - BORDER_WIDTH - 0.35, Math.PI / 2);
-        generateFringes(depth / 2 + BORDER_WIDTH + 0.35, Math.PI / 2);
+        // Sol ve Sağ (kısa kenar) Püskülleri
+        generateFringes(-width / 2 - BORDER_WIDTH - 0.35, Math.PI / 2);
+        generateFringes(width / 2 + BORDER_WIDTH + 0.35, -Math.PI / 2);
 
         meshRef.current.instanceMatrix.needsUpdate = true;
     }, [width, depth]);
