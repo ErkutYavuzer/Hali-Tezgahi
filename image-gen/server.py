@@ -104,18 +104,33 @@ def preprocess_drawing(img: Image.Image, size: int = 512) -> Image.Image:
 
 def add_emboss_texture(img: Image.Image) -> Image.Image:
     """
-    Kabartma/relief efekti — gerçek halı dokusu hissi verir.
-    Emboss filtresi uygulayıp orijinalle blend eder.
+    Güçlü kabartma/relief efekti — gerçek halı dokuma hissi.
+    Özel kernel + kontrast artırma + çift sharpen.
     """
-    # Emboss filtresi
-    embossed = img.filter(ImageFilter.EMBOSS)
-    
-    # Orijinal ile blend — %25 emboss, %75 orijinal
-    blended = Image.blend(img, embossed, alpha=0.25)
-    
-    # Hafif sharpen — detayları belirginleştir
+    from PIL import ImageEnhance
+
+    # Özel dokuma kernel — iplik dokusu hissi
+    weave_kernel = ImageFilter.Kernel(
+        size=(3, 3),
+        kernel=[-2, -1, 0,
+                -1,  1, 1,
+                 0,  1, 2],
+        scale=1,
+        offset=128
+    )
+    embossed = img.filter(weave_kernel)
+
+    # Güçlü blend — %40 emboss efekti
+    blended = Image.blend(img, embossed, alpha=0.40)
+
+    # Kontrast artır — kabartmayı belirginleştir
+    enhancer = ImageEnhance.Contrast(blended)
+    blended = enhancer.enhance(1.3)
+
+    # Çift sharpen — dokuma detayları
     blended = blended.filter(ImageFilter.SHARPEN)
-    
+    blended = blended.filter(ImageFilter.SHARPEN)
+
     return blended
 
 
