@@ -87,7 +87,7 @@ app = FastAPI(title="Kilim Motif Generator v2 — SDXL Turbo", lifespan=lifespan
 class GenerateRequest(BaseModel):
     prompt: Optional[str] = None
     image: Optional[str] = None
-    strength: float = 0.65            # orijinal şekli koru, stili değiştir
+    strength: float = 0.55            # orijinal deseni %45 koru
     steps: int = 6            # SDXL Turbo: strength*steps >= 4 olmalı
     guidance_scale: float = 0.0   # SDXL Turbo: 0.0 = en iyi
     width: int = 512
