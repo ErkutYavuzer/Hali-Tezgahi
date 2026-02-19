@@ -13,7 +13,7 @@ RUN mkdir -p /app/data
 ENV DATA_DIR=/app/data
 
 # AI Motif — Antigravity Gateway (OpenAI-compatible)
-ENV AI_API_URL=https://antigravity2.mindops.net/v1/chat/completions
+ENV AI_API_URL=https://antigravity.mindops.net/v1/chat/completions
 ENV AI_API_KEY=sk-antigravity-lejyon-2026
 
 EXPOSE 3003

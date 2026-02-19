@@ -6,13 +6,13 @@
  *  2. AI orijinal şekli koruyarak kilim motifi versiyonunu üretir
  *  3. Üretilen görseli base64 data URL olarak döndür
  * 
- * Gateway: antigravity2.mindops.net (OpenAI-compatible)
- * Model: gemini-3-pro-image-1x1 (img2img destekli)
+ * Gateway: antigravity.mindops.net (OpenAI-compatible)
+ * Model: gemini-2.5-flash (img2img destekli)
  */
 
-const API_URL = process.env.AI_API_URL || 'https://antigravity2.mindops.net/v1/chat/completions';
+const API_URL = process.env.AI_API_URL || 'https://antigravity.mindops.net/v1/chat/completions';
 const API_KEY = process.env.AI_API_KEY || 'sk-antigravity-lejyon-2026';
-const IMAGE_MODEL = 'gemini-3-pro-image-1x1';
+const IMAGE_MODEL = 'gemini-2.5-flash';
 
 // Rate limiting
 let activeRequests = 0;
