@@ -104,34 +104,54 @@ def preprocess_drawing(img: Image.Image, size: int = 512) -> Image.Image:
 
 def add_emboss_texture(img: Image.Image) -> Image.Image:
     """
-    Güçlü kabartma/relief efekti — gerçek halı dokuma hissi.
-    Özel kernel + kontrast artırma + çift sharpen.
+    Gerçek halı dokuma tekstürü — prosedürel iplik örüntüsü overlay.
+    Yatay ve dikey iplik çizgileri oluşturup multiply blend ile bindirir.
     """
-    from PIL import ImageEnhance
+    from PIL import ImageEnhance, ImageDraw
+    import numpy as np
 
-    # Özel dokuma kernel — iplik dokusu hissi
-    weave_kernel = ImageFilter.Kernel(
-        size=(3, 3),
-        kernel=[-2, -1, 0,
-                -1,  1, 1,
-                 0,  1, 2],
-        scale=1,
-        offset=128
-    )
-    embossed = img.filter(weave_kernel)
+    w, h = img.size
 
-    # Güçlü blend — %40 emboss efekti
-    blended = Image.blend(img, embossed, alpha=0.40)
+    # Dokuma tekstür pattern oluştur — gri tonlarda
+    texture = Image.new("L", (w, h), 200)
+    draw = ImageDraw.Draw(texture)
 
-    # Kontrast artır — kabartmayı belirginleştir
-    enhancer = ImageEnhance.Contrast(blended)
-    blended = enhancer.enhance(1.3)
+    # Yatay iplik çizgileri (kilim atkı iplikleri)
+    for y in range(0, h, 4):
+        brightness = 160 if (y // 4) % 2 == 0 else 220
+        draw.line([(0, y), (w, y)], fill=brightness, width=1)
+        draw.line([(0, y + 1), (w, y + 1)], fill=brightness - 30, width=1)
 
-    # Çift sharpen — dokuma detayları
-    blended = blended.filter(ImageFilter.SHARPEN)
-    blended = blended.filter(ImageFilter.SHARPEN)
+    # Dikey iplik çizgileri (kilim çözgü iplikleri) — daha ince
+    for x in range(0, w, 6):
+        brightness = 180 if (x // 6) % 2 == 0 else 210
+        draw.line([(x, 0), (x, h)], fill=brightness, width=1)
 
-    return blended
+    # Texture'ı RGB'ye çevir
+    texture_rgb = Image.merge("RGB", [texture, texture, texture])
+
+    # Multiply blend — orijinal renkleri koruyarak doku ekle
+    import numpy as np
+    img_arr = np.array(img, dtype=np.float32)
+    tex_arr = np.array(texture_rgb, dtype=np.float32)
+
+    # Multiply: (img * texture) / 255
+    result_arr = (img_arr * tex_arr) / 255.0
+
+    # Orijinal ile karıştır — %35 doku efekti
+    blended_arr = img_arr * 0.65 + result_arr * 0.35
+    blended_arr = np.clip(blended_arr, 0, 255).astype(np.uint8)
+
+    result = Image.fromarray(blended_arr)
+
+    # Hafif kontrast artır
+    enhancer = ImageEnhance.Contrast(result)
+    result = enhancer.enhance(1.15)
+
+    # Sharpen — iplik detayları belirginleştir
+    result = result.filter(ImageFilter.SHARPEN)
+
+    return result
 
 
 @app.post("/generate")
