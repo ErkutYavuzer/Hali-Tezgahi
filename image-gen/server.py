@@ -31,14 +31,15 @@ KILIM_PROMPT = """masterpiece, best quality, professional traditional Anatolian 
 highly detailed geometric folk art pattern, pixel-perfect stepped lines, diamond shapes, 
 triangle borders, zigzag edges, elibelinde motif style, 
 rich deep crimson red, royal navy blue, antique gold saffron, natural cream ivory wool, dark walnut brown, 
-flat woven textile texture, zero gradients, zero shadows, authentic hand-woven kilim aesthetic, 
+textured woven wool fabric surface, visible thread weave pattern, slight raised embossed relief texture,
+authentic hand-woven kilim aesthetic, tactile textile feel,
 symmetric composition, ornate decorative kilim border frame, museum quality Turkish rug design,
-viewed from directly above, flat lay photography of a real kilim rug"""
+close-up macro photography of a real kilim rug showing fabric texture"""
 
 NEGATIVE_PROMPT = """blurry, low quality, deformed, ugly, disfigured, photorealistic person, face, 
-3d render, gradient lighting, shadow, modern art, abstract expressionism, 
+3d render, modern art, abstract expressionism, 
 watercolor, oil painting, pencil sketch, cartoon, anime,
-text, watermark, signature, logo, frame"""
+text, watermark, signature, logo"""
 
 
 def load_model():
@@ -101,6 +102,23 @@ def preprocess_drawing(img: Image.Image, size: int = 512) -> Image.Image:
     return img.resize((size, size), Image.LANCZOS)
 
 
+def add_emboss_texture(img: Image.Image) -> Image.Image:
+    """
+    Kabartma/relief efekti — gerçek halı dokusu hissi verir.
+    Emboss filtresi uygulayıp orijinalle blend eder.
+    """
+    # Emboss filtresi
+    embossed = img.filter(ImageFilter.EMBOSS)
+    
+    # Orijinal ile blend — %25 emboss, %75 orijinal
+    blended = Image.blend(img, embossed, alpha=0.25)
+    
+    # Hafif sharpen — detayları belirginleştir
+    blended = blended.filter(ImageFilter.SHARPEN)
+    
+    return blended
+
+
 @app.post("/generate")
 def generate(req: GenerateRequest):
     """Image generation — text2img veya img2img"""
@@ -138,6 +156,10 @@ def generate(req: GenerateRequest):
             )
 
         output_img = result.images[0]
+
+        # Kabartma/emboss efekti — gerçek halı dokusu hissi
+        output_img = add_emboss_texture(output_img)
+
         buf = io.BytesIO()
         output_img.save(buf, format="PNG")
         b64 = base64.b64encode(buf.getvalue()).decode()
