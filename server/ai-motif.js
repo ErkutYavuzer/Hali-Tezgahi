@@ -43,8 +43,8 @@ CRITICAL RULES:
 9. Make the motif warm, symmetric where possible, and authentically Turkish
 10. Output a clean, square image`;
 
-// Kilim prompt (self-hosted için — daha kısa)
-const KILIM_PROMPT_SHORT = `Traditional Anatolian Turkish kilim carpet motif, geometric style, stepped lines, diamonds, triangles, zigzag edges, deep red navy blue gold saffron cream, flat textile coloring, hand-woven aesthetic, decorative border frame`;
+// Kilim prompt (self-hosted için)
+const KILIM_PROMPT_SHORT = `masterpiece, best quality, professional traditional Anatolian Turkish kilim carpet motif, highly detailed geometric folk art, pixel-perfect stepped lines, diamond shapes, triangle borders, zigzag edges, elibelinde motif, rich crimson red navy blue antique gold saffron cream ivory, flat woven textile, zero gradients, symmetric composition, ornate kilim border frame, museum quality Turkish rug`;
 
 /**
  * Ana motif dönüşüm pipeline'ı
@@ -108,8 +108,9 @@ async function trySelfHosted(base64DataUrl) {
             body: JSON.stringify({
                 prompt: KILIM_PROMPT_SHORT,
                 image: base64DataUrl,
-                strength: 0.75,
-                steps: 4,
+                strength: 0.85,
+                steps: 8,
+                guidance_scale: 2.0,
                 width: 512,
                 height: 512,
             }),

@@ -27,11 +27,16 @@ pipe_t2i = None
 pipe_i2i = None
 model_ready = False
 
-KILIM_PROMPT = """Traditional Anatolian Turkish kilim carpet motif, geometric style, 
-stepped lines, diamonds, triangles, zigzag edges, 
-deep red navy blue gold saffron cream colors, 
-flat textile coloring, no gradients, hand-woven aesthetic, 
-square format, centered composition, decorative border frame"""
+KILIM_PROMPT = """masterpiece, best quality, professional traditional Anatolian Turkish kilim carpet motif, 
+highly detailed geometric folk art pattern, pixel-perfect stepped lines, diamond shapes, 
+triangle borders, zigzag edges, elibelinde motif style, 
+rich deep crimson red, royal navy blue, antique gold saffron, natural cream ivory wool, dark walnut brown, 
+flat woven textile texture, zero gradients, zero shadows, authentic hand-woven kilim aesthetic, 
+symmetric composition, ornate decorative kilim border frame, museum quality Turkish rug design"""
+
+NEGATIVE_PROMPT = """blurry, low quality, photorealistic, 3d render, gradient, shadow, 
+modern art, abstract, watercolor, oil painting, sketch, pencil drawing, 
+text, watermark, signature, frame, border outside image"""
 
 
 def load_model():
@@ -82,8 +87,9 @@ app = FastAPI(title="Kilim Motif Generator", lifespan=lifespan)
 class GenerateRequest(BaseModel):
     prompt: Optional[str] = None
     image: Optional[str] = None       # base64 data URL (img2img için)
-    strength: float = 0.75            # img2img gücü (0.0-1.0)
-    steps: int = 4                    # LCM adım sayısı (4-8)
+    strength: float = 0.85            # img2img gücü — yüksek = daha fazla dönüşüm
+    steps: int = 8                    # LCM adım sayısı (8 = kaliteli)
+    guidance_scale: float = 2.0       # prompt'a bağlılık
     width: int = 512
     height: int = 512
 
@@ -107,9 +113,10 @@ def generate(req: GenerateRequest):
 
             result = pipe_i2i(
                 prompt=prompt,
+                negative_prompt=NEGATIVE_PROMPT,
                 image=input_img,
                 num_inference_steps=req.steps,
-                guidance_scale=1.0,
+                guidance_scale=req.guidance_scale,
                 strength=req.strength,
             )
         else:
@@ -117,8 +124,9 @@ def generate(req: GenerateRequest):
             logger.info(f"✏️ text2img başlıyor (steps={req.steps})")
             result = pipe_t2i(
                 prompt=prompt,
+                negative_prompt=NEGATIVE_PROMPT,
                 num_inference_steps=req.steps,
-                guidance_scale=1.0,
+                guidance_scale=req.guidance_scale,
                 width=req.width,
                 height=req.height,
             )
@@ -126,7 +134,7 @@ def generate(req: GenerateRequest):
         # Image → base64
         output_img = result.images[0]
         buf = io.BytesIO()
-        output_img.save(buf, format="JPEG", quality=85)
+        output_img.save(buf, format="PNG")
         b64 = base64.b64encode(buf.getvalue()).decode()
 
         elapsed = time.time() - start
