@@ -12,7 +12,8 @@ COPY server/ ./server/
 RUN mkdir -p /app/data
 ENV DATA_DIR=/app/data
 
-# AI Motif — Antigravity Gateway (OpenAI-compatible)
+# AI Motif — Self-Hosted (primary) + API Gateway (fallback)
+ENV IMAGE_GEN_URL=http://hali-mozaik-image-gen.hali-mozaik.svc.cluster.local/generate
 ENV AI_API_URL=https://antigravity.mindops.net/v1/chat/completions
 ENV AI_API_KEY=sk-antigravity-lejyon-2026
 

@@ -1,0 +1,88 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: image-gen-models
+  namespace: hali-mozaik
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hali-mozaik-image-gen
+  namespace: hali-mozaik
+  labels:
+    app: hali-mozaik-image-gen
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hali-mozaik-image-gen
+  template:
+    metadata:
+      labels:
+        app: hali-mozaik-image-gen
+    spec:
+      # worker2'de çalışsın (en fazla RAM)
+      nodeSelector:
+        kubernetes.io/hostname: k3s-worker2
+      containers:
+        - name: image-gen
+          image: ghcr.io/ayavuzer/hali-mozaik-image-gen:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: MODEL_DIR
+              value: /models
+            - name: NUM_THREADS
+              value: "16"
+            - name: PORT
+              value: "8080"
+          resources:
+            requests:
+              cpu: "8"
+              memory: 6Gi
+            limits:
+              cpu: "16"
+              memory: 10Gi
+          volumeMounts:
+            - name: models
+              mountPath: /models
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 120
+            periodSeconds: 15
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 180
+            periodSeconds: 30
+            timeoutSeconds: 10
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: image-gen-models
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hali-mozaik-image-gen
+  namespace: hali-mozaik
+spec:
+  selector:
+    app: hali-mozaik-image-gen
+  ports:
+    - port: 80
+      targetPort: 8080
+      name: http
