@@ -31,6 +31,8 @@ spec:
       # worker2'de çalışsın (en fazla RAM)
       nodeSelector:
         kubernetes.io/hostname: k3s-worker2
+      imagePullSecrets:
+        - name: ghcr-creds
       containers:
         - name: image-gen
           image: ghcr.io/ayavuzer/hali-mozaik-image-gen:latest
@@ -47,11 +49,11 @@ spec:
               value: "8080"
           resources:
             requests:
-              cpu: "8"
-              memory: 6Gi
+              cpu: "4"
+              memory: 4Gi
             limits:
               cpu: "16"
-              memory: 10Gi
+              memory: 8Gi
           volumeMounts:
             - name: models
               mountPath: /models
