@@ -12,7 +12,7 @@
 
 const API_URL = process.env.AI_API_URL || 'https://antigravity.mindops.net/v1/chat/completions';
 const API_KEY = process.env.AI_API_KEY || 'sk-antigravity-lejyon-2026';
-const IMAGE_MODEL = 'gemini-2.5-flash';
+const IMAGE_MODEL = 'gemini-3-pro-image-1x1';
 
 // Rate limiting
 let activeRequests = 0;
