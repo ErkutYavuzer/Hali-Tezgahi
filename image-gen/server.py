@@ -86,7 +86,7 @@ app = FastAPI(title="Kilim Motif Generator v2 — SDXL Turbo", lifespan=lifespan
 class GenerateRequest(BaseModel):
     prompt: Optional[str] = None
     image: Optional[str] = None
-    strength: float = 0.90
+    strength: float = 0.65            # orijinal şekli koru, stili değiştir
     steps: int = 4            # SDXL Turbo: 1-4 step optimal
     guidance_scale: float = 0.0   # SDXL Turbo: 0.0 = en iyi
     width: int = 512
@@ -95,68 +95,10 @@ class GenerateRequest(BaseModel):
 
 def preprocess_drawing(img: Image.Image, size: int = 512) -> Image.Image:
     """
-    Çizimi kilim-uyumlu referans görsele dönüştür:
-    1. Kenar tespiti
-    2. Basamaklı geometrik şekillere quantize et
-    3. Kilim renk paleti ile renklendir
+    Minimal preprocessing — orijinal çizimi koru, sadece resize et.
+    SDXL Turbo strength=0.65 ile orijinal şekli koruyup kilim stili uygulayacak.
     """
-    img = img.resize((size, size), Image.LANCZOS)
-    gray = img.convert("L")
-
-    # Çizim hatlarını bul
-    edges = gray.filter(ImageFilter.FIND_EDGES)
-    edges = edges.filter(ImageFilter.MaxFilter(3))
-    edges = edges.point(lambda x: 255 if x > 25 else 0)
-    edges = ImageOps.invert(edges)
-
-    # Basamaklı geometrik quantize — pikselleri 8x8 bloklara böl
-    block_size = 8
-    quantized = edges.copy()
-    pixels = quantized.load()
-    w, h = quantized.size
-    for y in range(0, h, block_size):
-        for x in range(0, w, block_size):
-            # Blok ortalaması
-            total = 0
-            count = 0
-            for dy in range(min(block_size, h - y)):
-                for dx in range(min(block_size, w - x)):
-                    total += pixels[x + dx, y + dy]
-                    count += 1
-            avg = total // count
-            val = 0 if avg < 128 else 255
-            for dy in range(min(block_size, h - y)):
-                for dx in range(min(block_size, w - x)):
-                    pixels[x + dx, y + dy] = val
-
-    # Kilim renk paleti
-    kilim_colors = [
-        (180, 40, 30),    # koyu kırmızı
-        (25, 40, 100),    # lacivert
-        (200, 160, 50),   # altın sarı
-        (235, 220, 195),  # krem
-        (80, 50, 30),     # koyu kahve
-    ]
-
-    # Renkli kilim referansı oluştur
-    kilim_img = Image.new("RGB", (size, size), kilim_colors[3])  # krem zemin
-    mask = quantized.point(lambda x: 255 if x < 128 else 0)
-    motif_layer = Image.new("RGB", (size, size), kilim_colors[0])  # kırmızı motif
-    kilim_img.paste(motif_layer, mask=mask)
-
-    # Çerçeve ekle — kilim bordur
-    border = 16
-    for i in range(border):
-        color_idx = (i // 4) % len(kilim_colors)
-        c = kilim_colors[color_idx]
-        for x in range(size):
-            kilim_img.putpixel((x, i), c)
-            kilim_img.putpixel((x, size - 1 - i), c)
-        for y in range(size):
-            kilim_img.putpixel((i, y), c)
-            kilim_img.putpixel((size - 1 - i, y), c)
-
-    return kilim_img
+    return img.resize((size, size), Image.LANCZOS)
 
 
 @app.post("/generate")

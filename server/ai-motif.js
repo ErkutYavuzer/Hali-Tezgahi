@@ -108,9 +108,9 @@ async function trySelfHosted(base64DataUrl) {
             body: JSON.stringify({
                 prompt: KILIM_PROMPT_SHORT,
                 image: base64DataUrl,
-                strength: 0.85,
-                steps: 8,
-                guidance_scale: 2.0,
+                strength: 0.65,
+                steps: 4,
+                guidance_scale: 0.0,
                 width: 512,
                 height: 512,
             }),
