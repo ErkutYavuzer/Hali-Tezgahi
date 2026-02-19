@@ -109,7 +109,7 @@ async function trySelfHosted(base64DataUrl) {
                 prompt: KILIM_PROMPT_SHORT,
                 image: base64DataUrl,
                 strength: 0.75,
-                steps: 4,
+                steps: 6,
                 guidance_scale: 0.0,
                 width: 512,
                 height: 512,
