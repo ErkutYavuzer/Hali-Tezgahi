@@ -87,11 +87,49 @@ app = FastAPI(title="Kilim Motif Generator", lifespan=lifespan)
 class GenerateRequest(BaseModel):
     prompt: Optional[str] = None
     image: Optional[str] = None       # base64 data URL (img2img için)
-    strength: float = 0.85            # img2img gücü — yüksek = daha fazla dönüşüm
+    strength: float = 0.95            # neredeyse tamamen yeniden çiz
     steps: int = 8                    # LCM adım sayısı (8 = kaliteli)
     guidance_scale: float = 2.0       # prompt'a bağlılık
     width: int = 512
     height: int = 512
+
+
+def preprocess_drawing(img: Image.Image, size: int = 512) -> Image.Image:
+    """
+    Orijinal çizimi kilim-uyumlu bir referans görsele dönüştür:
+    1. Kenar tespiti (edge detection)
+    2. Kalın konturlar
+    3. Krem zemin + koyu kırmızı konturlar → kilim renk paleti
+    """
+    from PIL import ImageFilter, ImageOps
+
+    # Resize
+    img = img.resize((size, size), Image.LANCZOS)
+
+    # Grayscale → edge detection
+    gray = img.convert("L")
+
+    # Find edges — çizim hatlarını tespit et
+    edges = gray.filter(ImageFilter.FIND_EDGES)
+
+    # Konturları kalınlaştır
+    edges = edges.filter(ImageFilter.MaxFilter(5))
+
+    # Threshold — binary siyah-beyaz
+    edges = edges.point(lambda x: 255 if x > 30 else 0)
+
+    # Invert — çizgiler beyaz, zemin siyah olsun
+    edges = ImageOps.invert(edges)
+
+    # Kilim renk paleti uygula: krem zemin + koyu kırmızı konturlar
+    kilim_base = Image.new("RGB", (size, size), (235, 220, 195))  # krem/ivory
+    kilim_lines = Image.new("RGB", (size, size), (139, 0, 0))      # koyu kırmızı
+
+    # Mask olarak edge kullan
+    mask = edges.point(lambda x: 255 if x < 128 else 0)
+    kilim_base.paste(kilim_lines, mask=mask)
+
+    return kilim_base
 
 
 @app.post("/generate")
@@ -109,12 +147,15 @@ def generate(req: GenerateRequest):
             logger.info(f"🖼️ img2img başlıyor (strength={req.strength}, steps={req.steps})")
             img_data = req.image.split(",")[1] if "," in req.image else req.image
             input_img = Image.open(io.BytesIO(base64.b64decode(img_data))).convert("RGB")
-            input_img = input_img.resize((req.width, req.height), Image.LANCZOS)
+
+            # Preprocessing: çizimden kilim-uyumlu referans oluştur
+            processed_img = preprocess_drawing(input_img, req.width)
+            logger.info("🎨 Çizim preprocessed → kilim referans oluşturuldu")
 
             result = pipe_i2i(
                 prompt=prompt,
                 negative_prompt=NEGATIVE_PROMPT,
-                image=input_img,
+                image=processed_img,
                 num_inference_steps=req.steps,
                 guidance_scale=req.guidance_scale,
                 strength=req.strength,
