@@ -208,7 +208,6 @@ function DrawingCard({ drawing, selected, onSelect, onDelete, onRetryAI, serverU
 // ═══════════════════════════════════════════════════
 export default function AdminPage() {
     const [authed, setAuthed] = useState(() => !!localStorage.getItem('admin-pin'));
-    const [pin, setPin] = useState(() => localStorage.getItem('admin-pin') || '');
     const [drawings, setDrawings] = useState([]);
     const [stats, setStats] = useState(null);
     const [aiStatus, setAiStatus] = useState(null);
@@ -216,11 +215,11 @@ export default function AdminPage() {
     const [tab, setTab] = useState('drawings'); // drawings | settings
     const [maxDrawings, setMaxDrawings] = useState(28);
     const [aiEnabled, setAiEnabled] = useState(true);
-    const [confirmAction, setConfirmAction] = useState(null);
     const socketRef = useRef(null);
+    const pinRef = useRef(localStorage.getItem('admin-pin') || '');
     const serverUrl = window.location.origin;
 
-    // Socket bağlantısı
+    // Socket bağlantısı — sadece bir kez oluştur
     useEffect(() => {
         const socket = io(serverUrl, {
             transports: ['polling', 'websocket'],
@@ -229,9 +228,10 @@ export default function AdminPage() {
         socketRef.current = socket;
 
         socket.on('connect', () => {
-            if (authed && pin) {
-                socket.emit('admin:auth', { pin });
-                socket.emit('admin:get-stats', { pin });
+            const savedPin = localStorage.getItem('admin-pin');
+            if (savedPin) {
+                socket.emit('admin:auth', { pin: savedPin });
+                socket.emit('admin:get-stats', { pin: savedPin });
             }
         });
 
@@ -239,10 +239,10 @@ export default function AdminPage() {
         socket.on('admin:auth-result', ({ success }) => {
             if (success) {
                 setAuthed(true);
-                localStorage.setItem('admin-pin', pin);
             } else {
                 setAuthed(false);
                 localStorage.removeItem('admin-pin');
+                pinRef.current = '';
             }
         });
 
@@ -287,49 +287,51 @@ export default function AdminPage() {
         });
 
         return () => socket.close();
-    }, [authed, pin]);
+    }, []); // Boş dependency — socket bir kez oluşturulur
 
     // Auth handler
     const handleAuth = (inputPin, callback) => {
-        setPin(inputPin);
+        pinRef.current = inputPin;
         const socket = socketRef.current;
-        if (!socket) return callback(false);
+        if (!socket || !socket.connected) {
+            return callback(false);
+        }
 
         socket.emit('admin:auth', { pin: inputPin });
-        socket.once('admin:auth-result', ({ success }) => {
+        const onResult = ({ success }) => {
+            socket.off('admin:auth-result', onResult);
             if (success) {
                 setAuthed(true);
-                setPin(inputPin);
                 localStorage.setItem('admin-pin', inputPin);
-                // Veri yükle
                 socket.emit('admin:get-stats', { pin: inputPin });
             }
             callback(success);
-        });
+        };
+        socket.on('admin:auth-result', onResult);
     };
 
     // Aksiyonlar
     const deleteDrawing = (id) => {
         if (!confirm('Bu çizimi silmek istediğinize emin misiniz?')) return;
-        socketRef.current?.emit('admin:delete-drawing', { id, pin });
+        socketRef.current?.emit('admin:delete-drawing', { id, pin: pinRef.current });
     };
 
     const deleteSelected = () => {
         if (selected.size === 0) return;
         if (!confirm(`${selected.size} çizimi silmek istediğinize emin misiniz?`)) return;
         selected.forEach(id => {
-            socketRef.current?.emit('admin:delete-drawing', { id, pin });
+            socketRef.current?.emit('admin:delete-drawing', { id, pin: pinRef.current });
         });
         setSelected(new Set());
     };
 
     const deleteAll = () => {
         if (!confirm('TÜM çizimleri silmek istediğinize emin misiniz?\n\nBu işlem geri alınamaz!')) return;
-        socketRef.current?.emit('admin:delete-all', { pin });
+        socketRef.current?.emit('admin:delete-all', { pin: pinRef.current });
     };
 
     const retryAI = (id) => {
-        socketRef.current?.emit('admin:retry-ai', { id, pin });
+        socketRef.current?.emit('admin:retry-ai', { id, pin: pinRef.current });
     };
 
     const toggleSelect = (id) => {
@@ -351,24 +353,24 @@ export default function AdminPage() {
 
     const updateMaxDrawings = (val) => {
         setMaxDrawings(val);
-        socketRef.current?.emit('admin:set-max', { value: val, pin });
+        socketRef.current?.emit('admin:set-max', { value: val, pin: pinRef.current });
     };
 
     const toggleAI = () => {
         const next = !aiEnabled;
         setAiEnabled(next);
-        socketRef.current?.emit('admin:toggle-ai', { enabled: next, pin });
+        socketRef.current?.emit('admin:toggle-ai', { enabled: next, pin: pinRef.current });
     };
 
     const resetCarpet = () => {
         if (!confirm('Halıyı sıfırlamak istediğinize emin misiniz?\n\nTüm çizimler silinecek ve yeni oturum başlayacak!')) return;
-        socketRef.current?.emit('admin:reset-carpet', { pin });
+        socketRef.current?.emit('admin:reset-carpet', { pin: pinRef.current });
     };
 
     const logout = () => {
         localStorage.removeItem('admin-pin');
         setAuthed(false);
-        setPin('');
+        pinRef.current = '';
     };
 
     // PIN giriş ekranı
