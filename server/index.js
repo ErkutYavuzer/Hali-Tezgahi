@@ -439,6 +439,227 @@ io.on('connection', (socket) => {
     console.log('✨ Sunucu hafızası sıfırlandı.');
   });
 
+  // ═══════════════════════════════════════════════════
+  // 🔐 ADMIN EVENT'LERİ
+  // ═══════════════════════════════════════════════════
+
+  const ADMIN_PIN = process.env.ADMIN_PIN || '1234';
+
+  function verifyAdmin(pin) {
+    return pin === ADMIN_PIN;
+  }
+
+  function getDiskUsage() {
+    try {
+      const files = fs.readdirSync(MOTIFS_DIR);
+      let totalSize = 0;
+      files.forEach(f => {
+        const stat = fs.statSync(path.join(MOTIFS_DIR, f));
+        if (stat.isFile()) totalSize += stat.size;
+      });
+      return totalSize;
+    } catch { return 0; }
+  }
+
+  // 🔐 Admin PIN doğrulama
+  socket.on('admin:auth', ({ pin }) => {
+    if (verifyAdmin(pin)) {
+      socket.isAdmin = true;
+      socket.emit('admin:auth-result', { success: true });
+      // İlk veriyi gönder
+      socket.emit('initial-carpet', { drawings });
+      socket.emit('ai-status', getAIStatus());
+      console.log(`🔐 Admin giriş başarılı: ${socket.id}`);
+    } else {
+      socket.isAdmin = false;
+      socket.emit('admin:auth-result', { success: false, error: 'Yanlış PIN' });
+      console.warn(`🔐❌ Admin giriş başarısız: ${socket.id}`);
+    }
+  });
+
+  // 📊 İstatistik
+  socket.on('admin:get-stats', ({ pin }) => {
+    if (!verifyAdmin(pin)) return socket.emit('admin:error', { message: 'Yetkisiz' });
+    socket.emit('admin:stats', {
+      drawingCount: drawings.length,
+      maxDrawings: MAX_DRAWINGS,
+      aiEnabled,
+      aiDone: drawings.filter(d => d.aiStatus === 'done').length,
+      aiFailed: drawings.filter(d => d.aiStatus === 'failed').length,
+      aiProcessing: drawings.filter(d => d.aiStatus === 'processing').length,
+      clientCount,
+      diskUsage: getDiskUsage(),
+    });
+  });
+
+  // 🗑️ Tek çizim sil
+  socket.on('admin:delete-drawing', ({ id, pin }) => {
+    if (!verifyAdmin(pin)) return socket.emit('admin:error', { message: 'Yetkisiz' });
+
+    const idx = drawings.findIndex(d => d.id === id);
+    if (idx === -1) return socket.emit('admin:error', { message: 'Çizim bulunamadı' });
+
+    const drawing = drawings[idx];
+
+    // Dosyaları sil
+    if (drawing.drawingFile) {
+      const p = path.join(MOTIFS_DIR, drawing.drawingFile);
+      if (fs.existsSync(p)) fs.unlinkSync(p);
+    }
+    if (drawing.aiFile) {
+      const p = path.join(MOTIFS_DIR, drawing.aiFile);
+      if (fs.existsSync(p)) fs.unlinkSync(p);
+    }
+
+    // Diziden çıkar
+    drawings.splice(idx, 1);
+
+    // Yerleşimleri yeniden hesapla
+    drawings.forEach((d, i) => {
+      const placement = getGridPlacement(i);
+      Object.assign(d, placement);
+    });
+
+    saveData();
+
+    // Tüm client'lara bildir
+    io.emit('admin:drawing-deleted', { id });
+    io.emit('carpet-reset');
+    io.emit('initial-carpet', { drawings });
+    io.emit('drawing-count', drawings.length);
+
+    console.log(`🗑️ Admin çizim sildi: ${id}`);
+  });
+
+  // 🗑️ Tüm çizimleri sil
+  socket.on('admin:delete-all', ({ pin }) => {
+    if (!verifyAdmin(pin)) return socket.emit('admin:error', { message: 'Yetkisiz' });
+
+    // Tüm dosyaları sil
+    drawings.forEach(d => {
+      if (d.drawingFile) {
+        const p = path.join(MOTIFS_DIR, d.drawingFile);
+        if (fs.existsSync(p)) fs.unlinkSync(p);
+      }
+      if (d.aiFile) {
+        const p = path.join(MOTIFS_DIR, d.aiFile);
+        if (fs.existsSync(p)) fs.unlinkSync(p);
+      }
+    });
+
+    drawings = [];
+    saveData();
+
+    io.emit('admin:all-deleted', {});
+    io.emit('carpet-reset');
+    io.emit('initial-carpet', { drawings });
+    io.emit('drawing-count', 0);
+
+    console.log('🗑️ Admin tüm çizimleri sildi!');
+  });
+
+  // 🔄 AI yeniden çalıştır
+  socket.on('admin:retry-ai', ({ id, pin }) => {
+    if (!verifyAdmin(pin)) return socket.emit('admin:error', { message: 'Yetkisiz' });
+
+    const drawing = drawings.find(d => d.id === id);
+    if (!drawing) return socket.emit('admin:error', { message: 'Çizim bulunamadı' });
+    if (!drawing.dataUrl && !drawing.drawingFile) {
+      return socket.emit('admin:error', { message: 'Orijinal çizim verisi yok' });
+    }
+
+    // Orijinal çizimi oku
+    let dataUrl = drawing.dataUrl;
+    if (!dataUrl && drawing.drawingFile) {
+      const p = path.join(MOTIFS_DIR, drawing.drawingFile);
+      if (fs.existsSync(p)) {
+        const b64 = fs.readFileSync(p, 'base64');
+        dataUrl = `data:image/png;base64,${b64}`;
+      }
+    }
+
+    if (!dataUrl) return socket.emit('admin:error', { message: 'Çizim dosyası bulunamadı' });
+
+    drawing.aiStatus = 'processing';
+    io.emit('ai-processing', { drawingId: drawing.id });
+
+    transformToMotif(dataUrl, drawing.userName)
+      .then(aiDataUrl => {
+        if (aiDataUrl) {
+          const motifFilename = `motif_${drawing.id}.png`;
+          const savedMotif = saveBase64ToFile(aiDataUrl, motifFilename);
+          if (savedMotif) drawing.aiFile = savedMotif;
+
+          drawing.aiDataUrl = aiDataUrl;
+          drawing.aiStatus = 'done';
+          io.emit('ai-drawing-ready', {
+            id: drawing.id, aiDataUrl, aiFile: drawing.aiFile,
+            userName: drawing.userName,
+            x: drawing.x, y: drawing.y, width: drawing.width, height: drawing.height,
+          });
+          saveData();
+          console.log(`🔄✅ Admin AI retry başarılı: ${drawing.id}`);
+        } else {
+          drawing.aiStatus = 'failed';
+        }
+      })
+      .catch(() => { drawing.aiStatus = 'failed'; });
+  });
+
+  // ⚙️ Max çizim (admin)
+  socket.on('admin:set-max', ({ value, pin }) => {
+    if (!verifyAdmin(pin)) return socket.emit('admin:error', { message: 'Yetkisiz' });
+    const num = parseInt(value);
+    if (num >= 12 && num <= 60) {
+      MAX_DRAWINGS = num;
+      drawings = drawings.slice(0, MAX_DRAWINGS).map((d, i) => {
+        const placement = getGridPlacement(i);
+        return { ...d, ...placement };
+      });
+      io.emit('carpet-reset');
+      io.emit('initial-carpet', { drawings });
+      io.emit('drawing-count', drawings.length);
+      saveData();
+      console.log(`⚙️ Admin max çizim: ${MAX_DRAWINGS}`);
+    }
+  });
+
+  // 🤖 AI toggle (admin)
+  socket.on('admin:toggle-ai', ({ enabled, pin }) => {
+    if (!verifyAdmin(pin)) return socket.emit('admin:error', { message: 'Yetkisiz' });
+    aiEnabled = !!enabled;
+    io.emit('ai-mode', aiEnabled);
+    console.log(`🤖 Admin AI modu: ${aiEnabled ? 'AÇIK' : 'KAPALI'}`);
+  });
+
+  // 🔄 Halıyı sıfırla (admin)
+  socket.on('admin:reset-carpet', ({ pin }) => {
+    if (!verifyAdmin(pin)) return socket.emit('admin:error', { message: 'Yetkisiz' });
+
+    // Tüm dosyaları sil
+    try {
+      const files = fs.readdirSync(MOTIFS_DIR);
+      files.forEach(f => {
+        const p = path.join(MOTIFS_DIR, f);
+        if (fs.statSync(p).isFile()) fs.unlinkSync(p);
+      });
+    } catch (err) {
+      console.error('Dosya silme hatası:', err.message);
+    }
+
+    drawings = [];
+    saveData();
+
+    io.emit('admin:all-deleted', {});
+    io.emit('carpet-reset');
+    io.emit('initial-carpet', { drawings });
+    io.emit('drawing-count', 0);
+
+    console.log('🔄 Admin halıyı sıfırladı — yeni oturum!');
+  });
+
+  // ═══════════════════════════════════════════════════
+
   socket.on('disconnect', () => {
     clientCount--;
     lastDrawingTime.delete(socket.id);
