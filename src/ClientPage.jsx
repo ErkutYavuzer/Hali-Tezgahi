@@ -812,7 +812,7 @@ export default function ClientPage() {
         {/* ✍️ İsim Girişi */}
         <div style={{
           display: 'flex', alignItems: 'center', gap: '8px',
-          marginBottom: '8px', width: '100%',
+          marginBottom: '10px', width: '100%',
         }}>
           <span style={{ fontSize: '14px' }}>✍️</span>
           <input
@@ -843,27 +843,14 @@ export default function ClientPage() {
           />
         </div>
 
-        {/* Temizle */}
-        <button onClick={clearCanvas} style={{
-          flex: 1, padding: '16px', borderRadius: '16px',
-          border: '1px solid rgba(255,59,48,0.2)',
-          background: 'rgba(255,59,48,0.06)',
-          color: '#ff6b6b', fontWeight: '700', fontSize: '13px',
-          fontFamily: 'inherit', cursor: 'pointer',
-          transition: 'all 0.3s',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-        }}>
-          <span style={{ fontSize: '16px' }}>🗑️</span> TEMİZLE
-        </button>
-
-        {/* Gönder */}
+        {/* 🧶 Çizimi Dokula — tam genişlik */}
         <button
           id="send-trigger-btn"
           onClick={sendDrawing}
           disabled={sendState === 'sending'}
           style={{
-            flex: 2.5, padding: '16px 20px', borderRadius: '16px',
-            border: 'none',
+            width: '100%', padding: '18px 20px', borderRadius: '16px',
+            border: 'none', marginBottom: '10px',
             background: sendState === 'success'
               ? 'linear-gradient(135deg, #2ecc71, #27ae60)'
               : sendState === 'sending'
@@ -876,7 +863,7 @@ export default function ClientPage() {
                 ? 'successPop 0.6s ease'
                 : 'none',
             color: sendState === 'success' ? '#fff' : '#1a0a00',
-            fontWeight: '900', fontSize: '15px', fontFamily: 'inherit',
+            fontWeight: '900', fontSize: '16px', fontFamily: 'inherit',
             cursor: sendState === 'sending' ? 'wait' : 'pointer',
             boxShadow: sendState === 'success'
               ? '0 6px 25px rgba(46,204,113,0.4)'
@@ -892,6 +879,19 @@ export default function ClientPage() {
           ) : (
             <>🧶 ÇİZİMİ DOKULA</>
           )}
+        </button>
+
+        {/* Temizle */}
+        <button onClick={clearCanvas} style={{
+          width: '100%', padding: '12px', borderRadius: '12px',
+          border: '1px solid rgba(255,59,48,0.2)',
+          background: 'rgba(255,59,48,0.06)',
+          color: '#ff6b6b', fontWeight: '700', fontSize: '12px',
+          fontFamily: 'inherit', cursor: 'pointer',
+          transition: 'all 0.3s',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+        }}>
+          <span style={{ fontSize: '14px' }}>🗑️</span> TEMİZLE
         </button>
       </div>
     </div>
