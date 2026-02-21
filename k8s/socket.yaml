@@ -1,0 +1,78 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: motifs-storage
+  namespace: hali-mozaik
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hali-mozaik-socket
+  namespace: hali-mozaik
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hali-mozaik-socket
+  template:
+    metadata:
+      labels:
+        app: hali-mozaik-socket
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: socket
+          image: ghcr.io/ayavuzer/hali-mozaik-socket:v9.0.0
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3003
+          env:
+            - name: PORT
+              value: "3003"
+            - name: APP_PUBLIC_HOST
+              value: hali-mozaik.mindops.net
+            - name: CORS_ORIGINS
+              value: https://hali-mozaik.mindops.net
+            - name: MOTIFS_DIR
+              value: /data/motifs
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          volumeMounts:
+            - name: motifs
+              mountPath: /data/motifs
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3003
+            initialDelaySeconds: 3
+            periodSeconds: 10
+      volumes:
+        - name: motifs
+          persistentVolumeClaim:
+            claimName: motifs-storage
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hali-mozaik-socket
+  namespace: hali-mozaik
+spec:
+  selector:
+    app: hali-mozaik-socket
+  ports:
+    - port: 3003
+      targetPort: 3003
+      name: http
