@@ -1,6 +1,6 @@
 {
     "project": "Hali-Tezgahi",
-    "version": "v9.0.0",
+    "version": "v9.1.0",
     "updated": "2026-02-21",
     "phases": [
         {
@@ -20,9 +20,9 @@
         {
             "id": 2,
             "name": "Admin Panel",
-            "status": "pending",
+            "status": "in_progress",
             "sp_total": 16,
-            "sp_done": 0
+            "sp_done": 13
         }
     ],
     "features": [
@@ -181,7 +181,7 @@
             "id": "F013",
             "name": "AdminAuth",
             "phase": 2,
-            "status": "pending",
+            "status": "done",
             "sp": 3,
             "deps": [],
             "tags": [
@@ -192,7 +192,7 @@
             "id": "F014",
             "name": "DrawingManagement",
             "phase": 2,
-            "status": "pending",
+            "status": "done",
             "sp": 3,
             "deps": [
                 "F013"
@@ -205,7 +205,7 @@
             "id": "F015",
             "name": "AdminDashboard",
             "phase": 2,
-            "status": "pending",
+            "status": "done",
             "sp": 2,
             "deps": [
                 "F013"
@@ -218,7 +218,7 @@
             "id": "F016",
             "name": "SystemSettings",
             "phase": 2,
-            "status": "pending",
+            "status": "done",
             "sp": 3,
             "deps": [
                 "F013"
@@ -231,7 +231,7 @@
             "id": "F017",
             "name": "DrawingDetail",
             "phase": 2,
-            "status": "pending",
+            "status": "done",
             "sp": 2,
             "deps": [
                 "F014"
