@@ -1,0 +1,270 @@
+{
+    "project": "Hali-Tezgahi",
+    "version": "v9.0.0",
+    "updated": "2026-02-21",
+    "phases": [
+        {
+            "id": 0,
+            "name": "Core Platform",
+            "status": "done",
+            "sp_total": 30,
+            "sp_done": 30
+        },
+        {
+            "id": 1,
+            "name": "AI Motif Pipeline",
+            "status": "done",
+            "sp_total": 20,
+            "sp_done": 20
+        },
+        {
+            "id": 2,
+            "name": "Admin Panel",
+            "status": "pending",
+            "sp_total": 16,
+            "sp_done": 0
+        }
+    ],
+    "features": [
+        {
+            "id": "F001",
+            "name": "DrawingCanvas",
+            "phase": 0,
+            "status": "done",
+            "sp": 5,
+            "deps": [],
+            "tags": [
+                "frontend"
+            ]
+        },
+        {
+            "id": "F002",
+            "name": "HostCarpetView",
+            "phase": 0,
+            "status": "done",
+            "sp": 5,
+            "deps": [
+                "F001"
+            ],
+            "tags": [
+                "frontend"
+            ]
+        },
+        {
+            "id": "F003",
+            "name": "SocketRealtime",
+            "phase": 0,
+            "status": "done",
+            "sp": 5,
+            "deps": [],
+            "tags": [
+                "backend"
+            ]
+        },
+        {
+            "id": "F004",
+            "name": "QRConnect",
+            "phase": 0,
+            "status": "done",
+            "sp": 3,
+            "deps": [
+                "F003"
+            ],
+            "tags": [
+                "frontend"
+            ]
+        },
+        {
+            "id": "F005",
+            "name": "GridLayout",
+            "phase": 0,
+            "status": "done",
+            "sp": 5,
+            "deps": [
+                "F003"
+            ],
+            "tags": [
+                "backend"
+            ]
+        },
+        {
+            "id": "F006",
+            "name": "K8sDeploy",
+            "phase": 0,
+            "status": "done",
+            "sp": 5,
+            "deps": [],
+            "tags": [
+                "infra"
+            ]
+        },
+        {
+            "id": "F007",
+            "name": "DownloadPage",
+            "phase": 0,
+            "status": "done",
+            "sp": 2,
+            "deps": [
+                "F002"
+            ],
+            "tags": [
+                "frontend"
+            ]
+        },
+        {
+            "id": "F008",
+            "name": "GeminiMotifGen",
+            "phase": 1,
+            "status": "done",
+            "sp": 8,
+            "deps": [
+                "F003"
+            ],
+            "tags": [
+                "ai"
+            ]
+        },
+        {
+            "id": "F009",
+            "name": "GoogleAPIFallback",
+            "phase": 1,
+            "status": "done",
+            "sp": 3,
+            "deps": [
+                "F008"
+            ],
+            "tags": [
+                "ai"
+            ]
+        },
+        {
+            "id": "F010",
+            "name": "ArtistNameWoven",
+            "phase": 1,
+            "status": "done",
+            "sp": 2,
+            "deps": [
+                "F008"
+            ],
+            "tags": [
+                "ai"
+            ]
+        },
+        {
+            "id": "F011",
+            "name": "MotifFileStorage",
+            "phase": 1,
+            "status": "done",
+            "sp": 5,
+            "deps": [
+                "F008"
+            ],
+            "tags": [
+                "backend",
+                "infra"
+            ]
+        },
+        {
+            "id": "F012",
+            "name": "GaleriPage",
+            "phase": 1,
+            "status": "done",
+            "sp": 2,
+            "deps": [
+                "F011"
+            ],
+            "tags": [
+                "frontend"
+            ]
+        },
+        {
+            "id": "F013",
+            "name": "AdminAuth",
+            "phase": 2,
+            "status": "pending",
+            "sp": 3,
+            "deps": [],
+            "tags": [
+                "admin"
+            ]
+        },
+        {
+            "id": "F014",
+            "name": "DrawingManagement",
+            "phase": 2,
+            "status": "pending",
+            "sp": 3,
+            "deps": [
+                "F013"
+            ],
+            "tags": [
+                "admin"
+            ]
+        },
+        {
+            "id": "F015",
+            "name": "AdminDashboard",
+            "phase": 2,
+            "status": "pending",
+            "sp": 2,
+            "deps": [
+                "F013"
+            ],
+            "tags": [
+                "admin"
+            ]
+        },
+        {
+            "id": "F016",
+            "name": "SystemSettings",
+            "phase": 2,
+            "status": "pending",
+            "sp": 3,
+            "deps": [
+                "F013"
+            ],
+            "tags": [
+                "admin"
+            ]
+        },
+        {
+            "id": "F017",
+            "name": "DrawingDetail",
+            "phase": 2,
+            "status": "pending",
+            "sp": 2,
+            "deps": [
+                "F014"
+            ],
+            "tags": [
+                "admin"
+            ]
+        },
+        {
+            "id": "F018",
+            "name": "EnhancedGallery",
+            "phase": 2,
+            "status": "pending",
+            "sp": 2,
+            "deps": [
+                "F012"
+            ],
+            "tags": [
+                "frontend"
+            ]
+        },
+        {
+            "id": "F019",
+            "name": "QRGallery",
+            "phase": 2,
+            "status": "pending",
+            "sp": 1,
+            "deps": [
+                "F018"
+            ],
+            "tags": [
+                "frontend"
+            ]
+        }
+    ]
+}
