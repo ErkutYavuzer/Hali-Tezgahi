@@ -1,13 +1,14 @@
 /**
- * 🤖 AI Motif Dönüşümü v6 — Gemini Pro Image + Self-Hosted Fallback
+ * 🤖 AI Motif Dönüşümü v7 — 3 Katmanlı Pipeline
  * 
- * Pipeline (2 katmanlı):
- *  1. BİRİNCİL: Gemini 3 Pro Image (Antigravity Gateway) — profesyonel kalite, 5-10sn
- *  2. FALLBACK: Self-hosted SDXL Turbo (Kubernetes, CPU) — ücretsiz, 60sn
- *  3. Üretilen görseli base64 data URL olarak döndür
+ * Pipeline (3 katmanlı):
+ *  1. BİRİNCİL: Antigravity Gateway (Gemini 3 Pro Image) — profesyonel kalite
+ *  2. FALLBACK-1: Google API Direct (Gemini 2.0 Flash Image) — ucuz, hızlı
+ *  3. FALLBACK-2: Self-hosted SDXL Turbo (Kubernetes, CPU) — ücretsiz, yavaş
  * 
- * API Gateway: antigravity.mindops.net (OpenAI-compatible)
- * Fallback: hali-mozaik-image-gen.hali-mozaik.svc.cluster.local
+ * Antigravity: antigravity.mindops.net (OpenAI-compatible)
+ * Google API: generativelanguage.googleapis.com (native Gemini)
+ * SDXL: hali-mozaik-image-gen.hali-mozaik.svc.cluster.local
  */
 
 // Birincil: Antigravity Gateway (Gemini 3 Pro Image)
@@ -15,7 +16,12 @@ const API_URL = process.env.AI_API_URL || 'https://antigravity.mindops.net/v1/ch
 const API_KEY = process.env.AI_API_KEY || 'sk-antigravity-lejyon-2026';
 const IMAGE_MODEL = 'gemini-3-pro-image-1x1';
 
-// Fallback: Self-hosted SDXL Turbo (Kubernetes internal)
+// Fallback-1: Google API Direct (Gemini 2.0 Flash Image)
+const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || 'AIzaSyB0KaVVDL8mWWagBwSCbdRykXl9JAlxjoU';
+const GOOGLE_MODEL = 'gemini-2.0-flash-exp-image-generation';
+const GOOGLE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GOOGLE_MODEL}:generateContent`;
+
+// Fallback-2: Self-hosted SDXL Turbo (Kubernetes internal)
 const SELF_HOSTED_URL = process.env.IMAGE_GEN_URL || 'http://hali-mozaik-image-gen.hali-mozaik.svc.cluster.local/generate';
 
 // Rate limiting
@@ -27,6 +33,11 @@ const pendingQueue = [];
 let apiAvailable = true;
 let apiFailCount = 0;
 const API_MAX_FAILS = 3;
+
+// Google API durumu
+let googleApiAvailable = true;
+let googleApiFailCount = 0;
+const GOOGLE_API_MAX_FAILS = 3;
 
 // Self-hosted durumu
 let selfHostedAvailable = true;
@@ -68,14 +79,20 @@ export async function transformToMotif(base64DataUrl, userName = 'Anonim') {
     try {
         let result = null;
 
-        // 1. BİRİNCİL: Gemini 3 Pro Image (profesyonel kalite)
+        // 1. BİRİNCİL: Antigravity Gateway (Gemini 3 Pro Image)
         if (apiAvailable && API_KEY) {
             result = await tryApiGateway(base64DataUrl, userName);
         }
 
-        // 2. FALLBACK: Self-hosted SDXL Turbo (ücretsiz)
+        // 2. FALLBACK-1: Google API Direct (Gemini 2.0 Flash Image)
+        if (!result && googleApiAvailable && GOOGLE_API_KEY) {
+            console.log('🔄 Antigravity başarısız, Google API fallback deneniyor...');
+            result = await tryGoogleApi(base64DataUrl, userName);
+        }
+
+        // 3. FALLBACK-2: Self-hosted SDXL Turbo (ücretsiz)
         if (!result && selfHostedAvailable) {
-            console.log('🔄 Gemini başarısız, Self-hosted SDXL fallback deneniyor...');
+            console.log('🔄 Google API başarısız, Self-hosted SDXL fallback deneniyor...');
             result = await trySelfHosted(base64DataUrl);
         }
 
@@ -242,17 +259,93 @@ export function getAIStatus() {
         queueLength: pendingQueue.length,
         maxConcurrent: MAX_CONCURRENT,
         primary: {
-            name: 'Gemini 3 Pro Image',
+            name: 'Antigravity Gateway (Gemini 3 Pro Image)',
             available: apiAvailable,
             model: IMAGE_MODEL,
-            url: API_URL,
             failCount: apiFailCount,
         },
-        fallback: {
+        fallback1: {
+            name: 'Google API Direct (Gemini 2.0 Flash Image)',
+            available: googleApiAvailable,
+            model: GOOGLE_MODEL,
+            failCount: googleApiFailCount,
+        },
+        fallback2: {
             name: 'SDXL Turbo (Self-hosted)',
             available: selfHostedAvailable,
             url: SELF_HOSTED_URL,
             failCount: selfHostedFailCount,
         }
     };
+}
+
+/**
+ * Google API Direct ile motif üret (FALLBACK-1)
+ * Native Gemini API — img2img destekli
+ */
+async function tryGoogleApi(base64DataUrl, userName = 'Anonim') {
+    console.log(`🔵 Google API deneniyor (${GOOGLE_MODEL})...`);
+
+    try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 60000);
+
+        // base64DataUrl'den raw base64'ü çıkar
+        const base64Match = base64DataUrl.match(/base64,(.+)/);
+        const rawBase64 = base64Match ? base64Match[1] : base64DataUrl;
+
+        const response = await fetch(`${GOOGLE_API_URL}?key=${GOOGLE_API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{
+                    parts: [
+                        { text: TRANSFORM_PROMPT + `\n\n11. Write the artist name "${userName}" in small elegant text at the bottom-left corner of the motif, as if it was woven into the carpet.` },
+                        { inlineData: { mimeType: 'image/png', data: rawBase64 } }
+                    ]
+                }],
+                generationConfig: { responseModalities: ['TEXT', 'IMAGE'] }
+            }),
+            signal: controller.signal,
+        });
+
+        clearTimeout(timeout);
+
+        const data = await response.json();
+
+        if (data.error) {
+            throw new Error(data.error.message || JSON.stringify(data.error));
+        }
+
+        const parts = data.candidates?.[0]?.content?.parts || [];
+
+        for (const part of parts) {
+            if (part.inlineData) {
+                const mime = part.inlineData.mimeType || 'image/png';
+                const b64 = part.inlineData.data;
+                googleApiFailCount = 0;
+                googleApiAvailable = true;
+                console.log(`🔵✅ Google API motifi üretildi! (${Math.round(b64.length / 1024)}KB)`);
+                return `data:${mime};base64,${b64}`;
+            }
+        }
+
+        throw new Error('Yanıtta görsel bulunamadı');
+
+    } catch (err) {
+        googleApiFailCount++;
+        console.warn(`🔵❌ Google API hata (${googleApiFailCount}/${GOOGLE_API_MAX_FAILS}): ${err.message}`);
+
+        if (googleApiFailCount >= GOOGLE_API_MAX_FAILS) {
+            googleApiAvailable = false;
+            console.warn('🔵⏸️ Google API geçici olarak devre dışı');
+            setTimeout(() => {
+                googleApiAvailable = true;
+                googleApiFailCount = 0;
+                console.log('🔵🔄 Google API tekrar aktif edildi');
+            }, 300000);
+        }
+
+        return null;
+    }
 }
