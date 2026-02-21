@@ -54,23 +54,23 @@ const KILIM_PROMPT_SHORT = `masterpiece, best quality, professional traditional 
 /**
  * Ana motif dönüşüm pipeline'ı
  */
-export async function transformToMotif(base64DataUrl) {
+export async function transformToMotif(base64DataUrl, userName = 'Anonim') {
     if (activeRequests >= MAX_CONCURRENT) {
         return new Promise((resolve) => {
-            pendingQueue.push({ base64DataUrl, resolve });
+            pendingQueue.push({ base64DataUrl, userName, resolve });
             console.log(`🤖 AI kuyruğa eklendi. Kuyruk: ${pendingQueue.length}`);
         });
     }
 
     activeRequests++;
-    console.log(`🤖 AI motif pipeline başlıyor... (aktif: ${activeRequests})`);
+    console.log(`🤖 AI motif pipeline başlıyor... (aktif: ${activeRequests}, sahibi: ${userName})`);
 
     try {
         let result = null;
 
         // 1. BİRİNCİL: Gemini 3 Pro Image (profesyonel kalite)
         if (apiAvailable && API_KEY) {
-            result = await tryApiGateway(base64DataUrl);
+            result = await tryApiGateway(base64DataUrl, userName);
         }
 
         // 2. FALLBACK: Self-hosted SDXL Turbo (ücretsiz)
@@ -92,7 +92,7 @@ export async function transformToMotif(base64DataUrl) {
         activeRequests--;
         if (pendingQueue.length > 0) {
             const next = pendingQueue.shift();
-            transformToMotif(next.base64DataUrl).then(next.resolve);
+            transformToMotif(next.base64DataUrl, next.userName).then(next.resolve);
         }
     }
 }
@@ -100,7 +100,7 @@ export async function transformToMotif(base64DataUrl) {
 /**
  * Gemini 3 Pro Image ile motif üret (BİRİNCİL)
  */
-async function tryApiGateway(base64DataUrl) {
+async function tryApiGateway(base64DataUrl, userName = 'Anonim') {
     console.log(`🌐 Gemini Pro Image deneniyor (${IMAGE_MODEL})...`);
 
     try {
@@ -118,7 +118,7 @@ async function tryApiGateway(base64DataUrl) {
                 messages: [{
                     role: 'user',
                     content: [
-                        { type: 'text', text: TRANSFORM_PROMPT },
+                        { type: 'text', text: TRANSFORM_PROMPT + `\n\n11. Write the artist name "${userName}" in small elegant text at the bottom-left corner of the motif, as if it was woven into the carpet.` },
                         { type: 'image_url', image_url: { url: base64DataUrl } }
                     ]
                 }],

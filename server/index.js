@@ -259,7 +259,7 @@ io.on('connection', (socket) => {
       io.emit('ai-processing', { drawingId: drawing.id });
       io.emit('ai-status', getAIStatus());
 
-      transformToMotif(dataUrl)
+      transformToMotif(dataUrl, drawing.userName)
         .then(aiDataUrl => {
           if (aiDataUrl) {
             drawing.aiDataUrl = aiDataUrl;
