@@ -87,46 +87,7 @@ app.get('/api/motifs/:id/download', (req, res) => {
 
 // 🖼️ Galeri sayfası (basit HTML)
 app.get('/galeri', (req, res) => {
-  const motifs = drawings.filter(d => d.aiFile);
-  let html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Kilim Motif Galerisi</title>
-<style>
-  *{margin:0;padding:0;box-sizing:border-box}
-  body{background:#1a1a2e;color:#fff;font-family:'Inter',sans-serif;padding:20px}
-  h1{text-align:center;font-size:28px;margin:20px 0;background:linear-gradient(135deg,#ffd700,#ff6b35);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:16px;max-width:1200px;margin:0 auto}
-  .card{background:rgba(255,255,255,0.05);border-radius:16px;overflow:hidden;border:1px solid rgba(255,215,0,0.15);transition:transform 0.3s}
-  .card:hover{transform:translateY(-4px);border-color:rgba(255,215,0,0.4)}
-  .card img{width:100%;aspect-ratio:1;object-fit:cover}
-  .card-info{padding:12px 16px}
-  .card-name{font-weight:700;font-size:14px;color:#ffd700}
-  .card-date{font-size:11px;opacity:0.4;margin-top:4px}
-  .card-btn{display:block;text-align:center;padding:10px;background:linear-gradient(135deg,#4ecdc4,#44bd32);color:#fff;text-decoration:none;font-weight:700;font-size:13px;border-radius:0 0 16px 16px;margin-top:8px}
-  .empty{text-align:center;padding:60px;opacity:0.5;font-size:18px}
-  .stats{text-align:center;margin:10px 0 30px;font-size:13px;opacity:0.5}
-</style></head><body>
-<h1>🧶 Kilim Motif Galerisi</h1>
-<div class="stats">${motifs.length} motif</div>
-<div class="grid">`;
-
-  if (motifs.length === 0) {
-    html += '<div class="empty">🎨 Henüz motif yok. Çizim yapın!</div>';
-  } else {
-    for (const m of motifs) {
-      const date = new Date(m.timestamp).toLocaleString('tr-TR');
-      html += `<div class="card">
-        <img src="/motifs/${m.aiFile}" alt="${m.userName} motifi" loading="lazy">
-        <div class="card-info">
-          <div class="card-name">✨ ${m.userName || 'Anonim'}</div>
-          <div class="card-date">${date}</div>
-        </div>
-        <a class="card-btn" href="/api/motifs/${m.id}/download">📥 İndir</a>
-      </div>`;
-    }
-  }
-
-  html += '</div></body></html>';
-  res.send(html);
+  res.redirect('/?role=gallery');
 });
 
 const httpServer = createServer(app);

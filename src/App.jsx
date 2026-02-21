@@ -3,6 +3,7 @@ import HostPage from './HostPage';
 import ClientPage from './ClientPage';
 import DownloadPage from './DownloadPage';
 import AdminPage from './AdminPage';
+import GalleryPage from './GalleryPage';
 
 export default function App() {
   const [role, setRole] = useState(null);
@@ -17,6 +18,8 @@ export default function App() {
       setRole('download');
     } else if (urlRole === 'admin') {
       setRole('admin');
+    } else if (urlRole === 'gallery') {
+      setRole('gallery');
     } else {
       // Varsayılan: Host (halı ekranı)
       setRole('host');
@@ -27,5 +30,7 @@ export default function App() {
 
   if (role === 'download') return <DownloadPage />;
   if (role === 'admin') return <AdminPage />;
+  if (role === 'gallery') return <GalleryPage />;
   return role === 'host' ? <HostPage /> : <ClientPage />;
 }
+

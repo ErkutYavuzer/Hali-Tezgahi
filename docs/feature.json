@@ -1,6 +1,6 @@
 {
     "project": "Hali-Tezgahi",
-    "version": "v9.1.0",
+    "version": "v10.0.0",
     "updated": "2026-02-21",
     "phases": [
         {
@@ -20,9 +20,9 @@
         {
             "id": 2,
             "name": "Admin Panel",
-            "status": "in_progress",
+            "status": "done",
             "sp_total": 16,
-            "sp_done": 13
+            "sp_done": 16
         }
     ],
     "features": [
@@ -244,7 +244,7 @@
             "id": "F018",
             "name": "EnhancedGallery",
             "phase": 2,
-            "status": "pending",
+            "status": "done",
             "sp": 2,
             "deps": [
                 "F012"
@@ -257,7 +257,7 @@
             "id": "F019",
             "name": "QRGallery",
             "phase": 2,
-            "status": "pending",
+            "status": "done",
             "sp": 1,
             "deps": [
                 "F018"

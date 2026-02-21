@@ -432,6 +432,24 @@ export default function HostPage() {
             </div>
           </div>
 
+          {/* 🖼️ GALERİ QR KOD */}
+          <div style={{ marginBottom: 24 }}>
+            <div style={{ fontSize: 11, letterSpacing: 2, opacity: 0.4, marginBottom: 12 }}>🖼️ MOTİF GALERİSİ</div>
+            <div style={{
+              background: 'white', borderRadius: 16, padding: 10,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(window.location.origin + '/?role=gallery')}`}
+                alt="Galeri QR"
+                style={{ width: 120, height: 120, display: 'block' }}
+              />
+            </div>
+            <div style={{ textAlign: 'center', marginTop: 8, fontSize: 10, opacity: 0.35 }}>
+              Tüm motifleri görmek ve indirmek için tarayın
+            </div>
+          </div>
+
           {/* 🔊 SES KONTROL */}
           <div style={{
             background: 'rgba(255,255,255,0.04)', borderRadius: 14,
