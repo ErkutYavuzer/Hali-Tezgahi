@@ -10,7 +10,7 @@ import { CONFIG } from './constants';
 import { audioManager } from './audio/AudioManager';
 
 const initAudio = () => {
-  audioManager.init().then(() => console.log('🔊 Audio System Initialized'));
+  audioManager.init().then(() => {/* console.log('🔊 Audio System Initialized') */ });
 };
 
 // ✨ HAVADA SÜZÜLEN TOZ PARÇACIKLARI — zamansız atmosfer
@@ -133,7 +133,10 @@ export default function HostPage() {
   }, []);
 
   useEffect(() => {
-    const socketUrl = window.location.origin;
+    const socketUrl = window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')
+      ? `http://${window.location.hostname}:3003`
+      : window.location.origin;
+
     const newSocket = io(socketUrl, {
       transports: ['polling', 'websocket'],
       upgrade: true

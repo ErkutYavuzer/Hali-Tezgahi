@@ -598,14 +598,14 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
             return;
         }
 
-        console.log(`🧶 drawWovenImage başladı: x=${drawing.x} y=${drawing.y} w=${drawing.width} h=${drawing.height}`);
+        // console.log(`🧶 drawWovenImage başladı: x=${drawing.x} y=${drawing.y} w=${drawing.width} h=${drawing.height}`);
 
         const img = new Image();
         if (!drawing.dataUrl.startsWith('data:')) {
             img.crossOrigin = 'anonymous';
         }
         img.onload = () => {
-            console.log(`✅ drawWovenImage resim yüklendi: ${drawing.width}x${drawing.height}`);
+            // console.log(`✅ drawWovenImage resim yüklendi: ${drawing.width}x${drawing.height}`);
             try {
                 // 1️⃣ Önce çizimi tam çözünürlükte direkt yapıştır
                 ctx.save();
@@ -626,7 +626,7 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
                 }
 
                 needsUpdateRef.current = true;
-                console.log(`✅ drawWovenImage tamamlandı: ${drawing.id?.substring(0, 15)}`);
+                // console.log(`✅ drawWovenImage tamamlandı: ${drawing.id?.substring(0, 15)}`);
             } catch (err) {
                 console.error('❌ drawWovenImage genel hata:', err);
             }
@@ -772,7 +772,7 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
                 }
             }
 
-            console.log(`🧶 ${pixelIndex} iplik uçuşa geçti! (stil: ${['spiral', 'dalga', 'kaskad'][flightStyle]})`);
+            // console.log(`🧶 ${pixelIndex} iplik uçuşa geçti! (stil: ${['spiral', 'dalga', 'kaskad'][flightStyle]})`);
 
             // 🔊 Uçuş başlangıç sesi
             try { audioManager.playWhoosh(); } catch (e) { }
@@ -797,7 +797,7 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
                         console.warn('⚠️ İsim yazma hatası:', nameErr.message);
                     }
                     needsUpdateRef.current = true;
-                    console.log(`🎨 İsim eklendi: ${drawing.userName} (${drawingId.substring(0, 15)})`);
+                    // console.log(`🎨 İsim eklendi: ${drawing.userName} (${drawingId.substring(0, 15)})`);
                 }
                 delete pendingEnhancementsRef.current[drawingId];
             }, estimatedLandTime);
@@ -861,7 +861,7 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
         const canvas = offscreenCanvasRef.current;
         if (!ctx || !canvas || !aiDataUrl) return;
 
-        console.log(`🤖✨ AI motif dönüşümü: ${id?.substring(0, 15)}`);
+        // console.log(`🤖✨ AI motif dönüşümü: ${id?.substring(0, 15)}`);
 
         // Pending enhancement varsa iptal et (flying pixels henüz bitmemiş olabilir)
         if (pendingEnhancementsRef.current[id]) {
@@ -900,7 +900,7 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
                     console.warn('⚠️ AI motif isim hatası:', nameErr.message);
                 }
                 needsUpdateRef.current = true;
-                console.log(`✨ AI kilim motifi yerleştirildi! (${width}x${height})`);
+                // console.log(`✨ AI kilim motifi yerleştirildi! (${width}x${height})`);
             } catch (err) {
                 console.error('❌ morphToAIMotif genel hata:', err);
             }
@@ -948,8 +948,8 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
         if (!socket) return;
 
         socket.on('initial-carpet', ({ drawings }) => {
-            console.log(`📦 initial-carpet geldi: ${drawings?.length || 0} çizim`);
-            console.log(`📦 ctx durumu: ${!!offscreenCtxRef.current}, textureRef: ${!!textureRef.current}`);
+            // console.log(`📦 initial-carpet geldi: ${drawings?.length || 0} çizim`);
+            // console.log(`📦 ctx durumu: ${!!offscreenCtxRef.current}, textureRef: ${!!textureRef.current}`);
             if (drawings && drawings.length > 0) {
                 const ctx = offscreenCtxRef.current;
                 if (!ctx) {
@@ -958,7 +958,7 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
                 }
 
                 drawings.forEach((drawing, i) => {
-                    console.log(`📦 [${i}] id=${drawing.id?.substring(0, 12)} ai=${!!drawing.aiDataUrl} dataUrl=${drawing.dataUrl ? 'OK' : 'NULL'} x=${drawing.x} y=${drawing.y} w=${drawing.width} h=${drawing.height}`);
+                    // console.log(`📦 [${i}] id=${drawing.id?.substring(0, 12)} ai=${!!drawing.aiDataUrl} dataUrl=${drawing.dataUrl ? 'OK' : 'NULL'} x=${drawing.x} y=${drawing.y} w=${drawing.width} h=${drawing.height}`);
 
                     if (drawing.aiDataUrl && ctx) {
                         // ✅ AI motifi HAZIR — direkt çiz
@@ -980,7 +980,7 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
                                         console.warn('⚠️ İsim hatası:', nameErr.message);
                                     }
                                     needsUpdateRef.current = true;
-                                    console.log(`📦✅ AI motif çizildi [${i}]: ${drawing.id?.substring(0, 15)}`);
+                                    // console.log(`📦✅ AI motif çizildi [${i}]: ${drawing.id?.substring(0, 15)}`);
                                 } catch (err) {
                                     console.error('❌ AI drawImage hatası:', err);
                                     // Fallback: orijinal çizimi göster
@@ -1010,7 +1010,7 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
 
         // 🤖 AI motifi hazır — morph animasyonu başlat
         socket.on('ai-drawing-ready', (data) => {
-            console.log(`🤖 AI drawing ready:`, data.id?.substring(0, 15));
+            // console.log(`🤖 AI drawing ready:`, data.id?.substring(0, 15));
             morphToAIMotif(data);
         });
 
@@ -1045,7 +1045,7 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
 
         // 🔑 KALICI FIX: Bileşen mount olduktan sonra veriyi tekrar iste
         // (socket zaten bağlıysa initial-carpet eventi kaçırılmış olabilir)
-        console.log('🔄 request-initial-carpet gönderiliyor...');
+        // console.log('🔄 request-initial-carpet gönderiliyor...');
         socket.emit('request-initial-carpet');
 
         return () => {

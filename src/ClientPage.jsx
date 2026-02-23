@@ -102,7 +102,10 @@ export default function ClientPage() {
 
   // Socket bağlantısı
   useEffect(() => {
-    const socketUrl = window.location.origin;
+    const socketUrl = window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')
+      ? `http://${window.location.hostname}:3003`
+      : window.location.origin;
+
     socketRef.current = io(socketUrl, {
       transports: ['polling', 'websocket'],
       reconnectionAttempts: 10,

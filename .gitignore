@@ -29,3 +29,10 @@ logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Runtime data (sunucu tarafında üretilir)
+server/motifs/
+server/carpet_data.json
+server/carpet_latest.png
+server/archive_data.json
+server/sessions_data.json

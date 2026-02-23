@@ -11,11 +11,11 @@
 
 // Birincil: Antigravity Gateway (Gemini 3 Pro Image)
 const API_URL = process.env.AI_API_URL || 'https://antigravity.mindops.net/v1/chat/completions';
-const API_KEY = process.env.AI_API_KEY || 'sk-antigravity-lejyon-2026';
+const API_KEY = process.env.AI_API_KEY || '';
 const IMAGE_MODEL = 'gemini-3-pro-image-1x1';
 
 // Fallback: Google API Direct (Gemini 2.0 Flash Image)
-const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || 'AIzaSyB0KaVVDL8mWWagBwSCbdRykXl9JAlxjoU';
+const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || '';
 const GOOGLE_MODEL = 'gemini-2.0-flash-exp-image-generation';
 const GOOGLE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GOOGLE_MODEL}:generateContent`;
 

@@ -47,7 +47,7 @@ class AudioManager {
         if (this.isInitialized) return;
 
         await Tone.start();
-        console.log('🎵 Audio Context Started');
+        // console.log('🎵 Audio Context Started');
 
         // ─── REVERB (Paylaşımlı — Çok derin, katetral) ───
         this.reverb = new Tone.Reverb({ decay: 8, wet: 0.7 }).toDestination();
@@ -126,7 +126,7 @@ class AudioManager {
         // this._startAmbientLoop();
 
         this.isInitialized = true;
-        console.log('🎶 Ses sistemi tam hazır — Ambient + Efektler aktif');
+        // console.log('🎶 Ses sistemi tam hazır — Ambient + Efektler aktif');
     }
 
     // ─── RENK NOTALARI (Yumuşak rüzgar çanı) ───
