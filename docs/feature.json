@@ -1,6 +1,6 @@
 {
   "project": "Hali-Tezgahi",
-  "version": "v10.4.0",
+  "version": "v12.0.0",
   "updated": "2026-02-23",
   "phases": [
     {
@@ -27,9 +27,9 @@
     {
       "id": 3,
       "name": "Admin Panel v2 & Sistem İyileştirmeleri",
-      "status": "planned",
+      "status": "in-progress",
       "sp_total": 31,
-      "sp_done": 0
+      "sp_done": 21
     }
   ],
   "features": [
@@ -208,7 +208,7 @@
       "id": "F020",
       "name": "LiveCarpetPreview",
       "phase": 3,
-      "status": "todo",
+      "status": "done",
       "sp": 3,
       "deps": ["F002"],
       "tags": ["admin", "frontend"]
@@ -217,7 +217,7 @@
       "id": "F021",
       "name": "ActivityFeed",
       "phase": 3,
-      "status": "todo",
+      "status": "done",
       "sp": 3,
       "deps": ["F015"],
       "tags": ["admin", "frontend"]
@@ -226,7 +226,7 @@
       "id": "F022",
       "name": "QuickActions",
       "phase": 3,
-      "status": "todo",
+      "status": "done",
       "sp": 2,
       "deps": ["F015"],
       "tags": ["admin"]
@@ -235,7 +235,7 @@
       "id": "F023",
       "name": "EventLifecycle",
       "phase": 3,
-      "status": "todo",
+      "status": "done",
       "sp": 5,
       "deps": ["F016"],
       "tags": ["admin", "backend"]
@@ -244,7 +244,7 @@
       "id": "F024",
       "name": "CarpetSnapshot",
       "phase": 3,
-      "status": "todo",
+      "status": "done",
       "sp": 3,
       "deps": ["F023"],
       "tags": ["backend"]
@@ -253,7 +253,7 @@
       "id": "F025",
       "name": "PromptEditor",
       "phase": 3,
-      "status": "todo",
+      "status": "done",
       "sp": 3,
       "deps": ["F008"],
       "tags": ["admin", "ai"]
@@ -262,7 +262,7 @@
       "id": "F026",
       "name": "AIRetryQueue",
       "phase": 3,
-      "status": "todo",
+      "status": "done",
       "sp": 2,
       "deps": ["F008"],
       "tags": ["admin", "ai"]
