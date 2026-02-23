@@ -9,15 +9,15 @@
  * Google API: generativelanguage.googleapis.com (native Gemini)
  */
 
-// Birincil: Antigravity Gateway (Gemini 3 Pro Image)
+// Birincil: Google API Direct (Gemini — daha güvenilir)
+const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || '';
+const GOOGLE_MODEL = 'gemini-2.0-flash-exp-image-generation';
+const GOOGLE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GOOGLE_MODEL}:generateContent`;
+
+// Fallback: Antigravity Gateway (Gemini 3 Pro Image)
 const API_URL = process.env.AI_API_URL || 'https://antigravity.mindops.net/v1/chat/completions';
 const API_KEY = process.env.AI_API_KEY || '';
 const IMAGE_MODEL = 'gemini-3-pro-image-1x1';
-
-// Fallback: Google API Direct (Gemini 2.0 Flash Image)
-const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || '';
-const GOOGLE_MODEL = 'gemini-2.0-flash-exp-image-generation';
-const GOOGLE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GOOGLE_MODEL}:generateContent`;
 
 // Rate limiting
 let activeRequests = 0;
@@ -66,15 +66,15 @@ export async function transformToMotif(base64DataUrl, userName = 'Anonim') {
     try {
         let result = null;
 
-        // 1. BİRİNCİL: Antigravity Gateway (Gemini 3 Pro Image)
-        if (apiAvailable && API_KEY) {
-            result = await tryApiGateway(base64DataUrl, userName);
+        // 1. BİRİNCİL: Google API Direct (Gemini 2.0 Flash Image)
+        if (googleApiAvailable && GOOGLE_API_KEY) {
+            result = await tryGoogleApi(base64DataUrl, userName);
         }
 
-        // 2. FALLBACK: Google API Direct (Gemini 2.0 Flash Image)
-        if (!result && googleApiAvailable && GOOGLE_API_KEY) {
-            console.log('🔄 Antigravity başarısız, Google API fallback deneniyor...');
-            result = await tryGoogleApi(base64DataUrl, userName);
+        // 2. FALLBACK: Antigravity Gateway (Gemini 3 Pro Image)
+        if (!result && apiAvailable && API_KEY) {
+            console.log('🔄 Google API başarısız, Antigravity fallback deneniyor...');
+            result = await tryApiGateway(base64DataUrl, userName);
         }
 
         if (result) {
@@ -249,16 +249,16 @@ export function getAIStatus() {
         queueLength: pendingQueue.length,
         maxConcurrent: MAX_CONCURRENT,
         primary: {
-            name: 'Antigravity Gateway (Gemini 3 Pro Image)',
-            available: apiAvailable,
-            model: IMAGE_MODEL,
-            failCount: apiFailCount,
-        },
-        fallback: {
             name: 'Google API Direct (Gemini 2.0 Flash Image)',
             available: googleApiAvailable,
             model: GOOGLE_MODEL,
             failCount: googleApiFailCount,
+        },
+        fallback: {
+            name: 'Antigravity Gateway (Gemini 3 Pro Image)',
+            available: apiAvailable,
+            model: IMAGE_MODEL,
+            failCount: apiFailCount,
         }
     };
 }
