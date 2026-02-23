@@ -191,11 +191,24 @@ export default function HostPage() {
       }, 1000);
     });
 
+    // 📸 Admin'den snapshot talebi
+    newSocket.on('take-snapshot', ({ eventId }) => {
+      setTimeout(() => {
+        const canvas = document.querySelector('canvas');
+        if (canvas) {
+          const imageData = canvas.toDataURL('image/png');
+          newSocket.emit('snapshot-data', { eventId, dataUrl: imageData });
+          console.log('📸 Snapshot gönderildi');
+        }
+      }, 500);
+    });
+
     return () => {
       newSocket.off('server-ip');
       newSocket.off('drawing-count');
       newSocket.off('client-count');
       newSocket.off('carpet-complete');
+      newSocket.off('take-snapshot');
       newSocket.close();
     };
   }, []);

@@ -139,7 +139,8 @@ let aiEnabled = true;  // 🤖 AI motif AKTİF — Gemini native image generatio
 let drawings = [];
 let archive = [];
 let sessions = [];
-let activityFeed = []; // 🆕 Son aktivite kayıtları (max 50)
+let events = [];   // 🆕 Etkinlik listesi
+let activityFeed = []; // Son aktivite kayıtları (max 50)
 
 // 📢 Aktivite feed'e ekle ve admin'lere bildir
 function emitActivity(type, message, extra = {}) {
@@ -185,6 +186,13 @@ if (fs.existsSync(PROMPT_FILE)) {
   } catch (e) { /* default prompt kalır */ }
 }
 
+// 📁 Snapshot dizini
+const SNAPSHOTS_DIR = path.join(MOTIFS_DIR, 'snapshots');
+if (!fs.existsSync(SNAPSHOTS_DIR)) fs.mkdirSync(SNAPSHOTS_DIR, { recursive: true });
+
+// 📁 Events dosyası
+const EVENTS_FILE = path.join(MOTIFS_DIR, 'events_data.json');
+
 // 💾 VERİ YÜKLEME
 function loadData() {
   if (fs.existsSync(DATA_FILE)) {
@@ -210,6 +218,12 @@ function loadData() {
       sessions = JSON.parse(fs.readFileSync(SESSIONS_FILE, 'utf-8')).sessions || [];
       console.log(`📋 ${sessions.length} oturum kaydı yüklendi.`);
     } catch (e) { sessions = []; }
+  }
+  if (fs.existsSync(EVENTS_FILE)) {
+    try {
+      events = JSON.parse(fs.readFileSync(EVENTS_FILE, 'utf-8')).events || [];
+      console.log(`🎪 ${events.length} etkinlik kaydı yüklendi.`);
+    } catch (e) { events = []; }
   }
 }
 loadData();
@@ -245,6 +259,11 @@ function saveArchive() {
 function saveSessions() {
   try { fs.writeFileSync(SESSIONS_FILE, JSON.stringify({ sessions })); }
   catch (e) { console.error('Oturum kaydetme hatası:', e); }
+}
+
+function saveEvents() {
+  try { fs.writeFileSync(EVENTS_FILE, JSON.stringify({ events })); }
+  catch (e) { console.error('Etkinlik kaydetme hatası:', e); }
 }
 
 // 📦 Çizimi arşive taşı (dosyaları kullanıcı adı ile birlikte sakla)
@@ -992,6 +1011,100 @@ io.on('connection', (socket) => {
     socket.emit('admin:prompt-updated', { success: true });
     addToast && socket.emit('admin:info', { message: 'AI prompt güncellendi!' });
     console.log('🎨 AI prompt güncellendi');
+  });
+
+  // 🎪 ETKİNLİK YÖNETİMİ
+  socket.on('admin:get-events', ({ pin }) => {
+    if (!verifyAdmin(pin)) return socket.emit('admin:error', { message: 'Yetkisiz' });
+    socket.emit('admin:events', { events });
+  });
+
+  socket.on('admin:create-event', ({ pin, name, location }) => {
+    if (!verifyAdmin(pin)) return socket.emit('admin:error', { message: 'Yetkisiz' });
+    if (!name || name.trim().length < 2) return socket.emit('admin:error', { message: 'Etkinlik adı gerekli' });
+    const evt = {
+      id: `evt_${Date.now()}`,
+      name: name.trim(),
+      location: (location || '').trim(),
+      createdAt: Date.now(),
+      startedAt: null,
+      endedAt: null,
+      status: 'draft',
+      stats: { totalDrawings: 0, aiSuccessCount: 0, aiFailedCount: 0, uniqueUsers: 0, snapshotFile: null }
+    };
+    events.unshift(evt);
+    saveEvents();
+    emitActivity('admin', `Yeni etkinlik oluşturuldu: ${evt.name} 🎪`);
+    socket.emit('admin:events', { events });
+    socket.emit('admin:info', { message: `"${evt.name}" oluşturuldu!` });
+    console.log(`🎪 Etkinlik oluşturuldu: ${evt.name}`);
+  });
+
+  socket.on('admin:start-event', ({ pin, eventId }) => {
+    if (!verifyAdmin(pin)) return socket.emit('admin:error', { message: 'Yetkisiz' });
+    const evt = events.find(e => e.id === eventId);
+    if (!evt) return socket.emit('admin:error', { message: 'Etkinlik bulunamadı' });
+    if (evt.status === 'active') return socket.emit('admin:error', { message: 'Etkinlik zaten aktif' });
+    // Diğer aktif etkinlikleri durdur
+    events.forEach(e => { if (e.status === 'active') e.status = 'paused'; });
+    evt.status = 'active';
+    evt.startedAt = evt.startedAt || Date.now();
+    saveEvents();
+    emitActivity('admin', `Etkinlik başladı: ${evt.name} 🚀`);
+    socket.emit('admin:events', { events });
+    socket.emit('admin:info', { message: `"${evt.name}" başlatıldı!` });
+    console.log(`🚀 Etkinlik başladı: ${evt.name}`);
+  });
+
+  socket.on('admin:end-event', ({ pin, eventId }) => {
+    if (!verifyAdmin(pin)) return socket.emit('admin:error', { message: 'Yetkisiz' });
+    const evt = events.find(e => e.id === eventId);
+    if (!evt) return socket.emit('admin:error', { message: 'Etkinlik bulunamadı' });
+    evt.status = 'completed';
+    evt.endedAt = Date.now();
+    // İstatistikleri kaydet
+    const aiDone = drawings.filter(d => d.aiStatus === 'done').length;
+    const aiFailed = drawings.filter(d => d.aiStatus === 'failed').length;
+    const uniqueUsers = new Set(drawings.map(d => d.userName)).size;
+    evt.stats = {
+      totalDrawings: drawings.length,
+      aiSuccessCount: aiDone,
+      aiFailedCount: aiFailed,
+      uniqueUsers,
+      snapshotFile: null
+    };
+    saveEvents();
+    // Snapshot talep et (host sayfasından)
+    io.emit('take-snapshot', { eventId: evt.id, eventName: evt.name });
+    emitActivity('admin', `Etkinlik tamamlandı: ${evt.name} — ${drawings.length} çizim, ${uniqueUsers} katılımcı 🏁`);
+    socket.emit('admin:events', { events });
+    socket.emit('admin:info', { message: `"${evt.name}" tamamlandı! Snapshot alınıyor...` });
+    console.log(`🏁 Etkinlik tamamlandı: ${evt.name} (${drawings.length} çizim, ${uniqueUsers} katılımcı)`);
+  });
+
+  // 📸 Host'tan gelen snapshot verisi
+  socket.on('snapshot-data', ({ eventId, dataUrl }) => {
+    if (!dataUrl) return;
+    try {
+      const base64 = dataUrl.replace(/^data:image\/\w+;base64,/, '');
+      const filename = `snapshot_${eventId || 'manual'}_${Date.now()}.png`;
+      fs.writeFileSync(path.join(SNAPSHOTS_DIR, filename), Buffer.from(base64, 'base64'));
+      // Etkinliğe bağla
+      if (eventId) {
+        const evt = events.find(e => e.id === eventId);
+        if (evt) { evt.stats.snapshotFile = filename; saveEvents(); }
+      }
+      emitActivity('admin', `Halı snapshot kaydedildi 📸`);
+      io.emit('admin:info', { message: 'Snapshot kaydedildi!' });
+      console.log(`📸 Snapshot kaydedildi: ${filename}`);
+    } catch (e) { console.error('Snapshot kaydetme hatası:', e); }
+  });
+
+  // 📸 Manuel snapshot al
+  socket.on('admin:take-snapshot', ({ pin }) => {
+    if (!verifyAdmin(pin)) return socket.emit('admin:error', { message: 'Yetkisiz' });
+    io.emit('take-snapshot', { eventId: null, eventName: 'Manuel Snapshot' });
+    socket.emit('admin:info', { message: 'Snapshot talebi gönderildi...' });
   });
 
   // 👥 Kullanıcı profili (tüm aktif + arşiv verileri)

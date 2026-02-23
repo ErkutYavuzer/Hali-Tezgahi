@@ -413,6 +413,9 @@ export default function AdminPage() {
     const [showQR, setShowQR] = useState(false);
     const [promptText, setPromptText] = useState('');
     const [promptPresets, setPromptPresets] = useState([]);
+    const [eventsData, setEventsData] = useState([]);
+    const [newEventName, setNewEventName] = useState('');
+    const [newEventLocation, setNewEventLocation] = useState('');
 
     const socketRef = useRef(null);
     const pinRef = useRef(localStorage.getItem('admin-pin') || '');
@@ -499,6 +502,7 @@ export default function AdminPage() {
         socket.on('admin:info', ({ message }) => addToast(message, 'info'));
         socket.on('admin:prompt', ({ prompt, presets }) => { setPromptText(prompt || ''); setPromptPresets(presets || []); });
         socket.on('admin:prompt-updated', () => addToast('AI prompt güncellendi! ✅', 'success'));
+        socket.on('admin:events', ({ events }) => setEventsData(events || []));
 
         socket.on('admin:error', ({ message }) => {
             addToast(message, 'error');
@@ -613,6 +617,7 @@ export default function AdminPage() {
     const menuItems = [
         { id: 'dashboard', icon: '📊', label: 'Dashboard' },
         { id: 'gallery', icon: '🖼️', label: 'Çizim Galerisi', badge: drawings.length },
+        { id: 'events', icon: '🎪', label: 'Etkinlikler', badge: eventsData.filter(e => e.status === 'active').length || undefined },
         { id: 'archive', icon: '📦', label: 'Arşiv / Geçmiş', badge: archiveData.length || undefined },
         { id: 'users', icon: '👥', label: 'Kullanıcılar' },
         { id: 'settings', icon: '⚙️', label: 'Sistem Ayarları' }
@@ -686,6 +691,8 @@ export default function AdminPage() {
                                 socket.emit('admin:get-activity', { pin });
                             } else if (item.id === 'settings') {
                                 socket.emit('admin:get-prompt', { pin });
+                            } else if (item.id === 'events') {
+                                socket.emit('admin:get-events', { pin });
                             }
                         }} style={{
                             display: 'flex', alignItems: 'center', gap: 12,
@@ -999,6 +1006,135 @@ export default function AdminPage() {
                                     }}>🗑️ Sil</button>
                                 </div>
                             </div>
+                        </div>
+                    )}
+
+                    {/* EVENTS VIEW */}
+                    {activeMenu === 'events' && (
+                        <div style={{ maxWidth: 800 }}>
+                            {/* Yeni Etkinlik Formu */}
+                            <div style={{ ...THEME.glass, borderRadius: 24, padding: 32, marginBottom: 24 }}>
+                                <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 20, display: 'flex', alignItems: 'center', gap: 10 }}>
+                                    <span style={{ color: THEME.primary }}>🎪</span> Yeni Etkinlik Oluştur
+                                </h3>
+                                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                                    <input
+                                        value={newEventName} onChange={e => setNewEventName(e.target.value)}
+                                        placeholder="Etkinlik Adı *" style={{
+                                            flex: 2, minWidth: 200, padding: '12px 16px', borderRadius: 10,
+                                            background: THEME.surface, border: `1px solid ${THEME.border}`,
+                                            color: THEME.text, fontSize: 14, fontFamily: 'inherit', outline: 'none'
+                                        }}
+                                    />
+                                    <input
+                                        value={newEventLocation} onChange={e => setNewEventLocation(e.target.value)}
+                                        placeholder="Konum (opsiyonel)" style={{
+                                            flex: 1, minWidth: 150, padding: '12px 16px', borderRadius: 10,
+                                            background: THEME.surface, border: `1px solid ${THEME.border}`,
+                                            color: THEME.text, fontSize: 14, fontFamily: 'inherit', outline: 'none'
+                                        }}
+                                    />
+                                    <button onClick={() => {
+                                        socketRef.current?.emit('admin:create-event', {
+                                            pin: pinRef.current, name: newEventName, location: newEventLocation
+                                        });
+                                        setNewEventName(''); setNewEventLocation('');
+                                    }} disabled={!newEventName.trim()} style={{
+                                        padding: '12px 24px', borderRadius: 10, border: 'none',
+                                        background: newEventName.trim() ? THEME.primaryGradient : THEME.surface,
+                                        color: newEventName.trim() ? '#000' : THEME.textMuted,
+                                        fontSize: 14, fontWeight: 700, cursor: newEventName.trim() ? 'pointer' : 'default',
+                                        fontFamily: 'inherit', transition: 'all 0.2s'
+                                    }}>+ Oluştur</button>
+                                </div>
+                            </div>
+
+                            {/* Etkinlik Listesi */}
+                            {eventsData.length === 0 ? (
+                                <div style={{ ...THEME.glass, borderRadius: 24, padding: 48, textAlign: 'center' }}>
+                                    <div style={{ fontSize: 40, marginBottom: 16 }}>🎪</div>
+                                    <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>Henüz etkinlik yok</div>
+                                    <div style={{ fontSize: 13, color: THEME.textMuted }}>Yukarıdan yeni bir etkinlik oluşturun</div>
+                                </div>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                                    {eventsData.map(evt => {
+                                        const statusColors = { draft: THEME.textMuted, active: THEME.success, completed: THEME.primary, paused: '#fdcb6e' };
+                                        const statusLabels = { draft: 'Taslak', active: '🟢 Aktif', completed: '✅ Tamamlandı', paused: '⏸ Duraklatıldı' };
+                                        const duration = evt.startedAt && evt.endedAt
+                                            ? Math.round((evt.endedAt - evt.startedAt) / 60000) + ' dk'
+                                            : evt.startedAt ? 'Devam ediyor...' : '-';
+                                        return (
+                                            <div key={evt.id} style={{
+                                                ...THEME.glass, borderRadius: 20, padding: 24,
+                                                borderLeft: `4px solid ${statusColors[evt.status] || THEME.border}`
+                                            }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+                                                    <div>
+                                                        <div style={{ fontSize: 17, fontWeight: 700 }}>{evt.name}</div>
+                                                        {evt.location && <div style={{ fontSize: 13, color: THEME.textMuted, marginTop: 4 }}>📍 {evt.location}</div>}
+                                                    </div>
+                                                    <div style={{
+                                                        padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700,
+                                                        background: `${statusColors[evt.status]}20`, color: statusColors[evt.status]
+                                                    }}>{statusLabels[evt.status]}</div>
+                                                </div>
+
+                                                {/* İstatistikler */}
+                                                {evt.status !== 'draft' && (
+                                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
+                                                        {[
+                                                            { label: 'Çizim', value: evt.stats?.totalDrawings || 0, icon: '🎨' },
+                                                            { label: 'AI Başarılı', value: evt.stats?.aiSuccessCount || 0, icon: '✨' },
+                                                            { label: 'Katılımcı', value: evt.stats?.uniqueUsers || 0, icon: '👥' },
+                                                            { label: 'Süre', value: duration, icon: '⏱️' }
+                                                        ].map((s, i) => (
+                                                            <div key={i} style={{ background: THEME.surface, padding: '10px 12px', borderRadius: 10, textAlign: 'center' }}>
+                                                                <div style={{ fontSize: 14 }}>{s.icon}</div>
+                                                                <div style={{ fontSize: 16, fontWeight: 800, marginTop: 2 }}>{s.value}</div>
+                                                                <div style={{ fontSize: 10, color: THEME.textMuted }}>{s.label}</div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+
+                                                {/* Aksiyonlar */}
+                                                <div style={{ display: 'flex', gap: 8 }}>
+                                                    {(evt.status === 'draft' || evt.status === 'paused') && (
+                                                        <button onClick={() => socketRef.current?.emit('admin:start-event', { pin: pinRef.current, eventId: evt.id })} style={{
+                                                            padding: '8px 16px', borderRadius: 8, border: 'none',
+                                                            background: 'rgba(0,230,118,0.1)', color: THEME.success,
+                                                            fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit'
+                                                        }}>🚀 Başlat</button>
+                                                    )}
+                                                    {evt.status === 'active' && (
+                                                        <button onClick={() => {
+                                                            if (confirm(`"${evt.name}" etkinliğini bitirmek istediğinize emin misiniz?`)) {
+                                                                socketRef.current?.emit('admin:end-event', { pin: pinRef.current, eventId: evt.id });
+                                                            }
+                                                        }} style={{
+                                                            padding: '8px 16px', borderRadius: 8, border: 'none',
+                                                            background: 'rgba(255,61,0,0.1)', color: THEME.danger,
+                                                            fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit'
+                                                        }}>🏁 Bitir</button>
+                                                    )}
+                                                    {evt.stats?.snapshotFile && (
+                                                        <a href={`${serverUrl}/motifs/snapshots/${evt.stats.snapshotFile}`} target="_blank" rel="noreferrer" style={{
+                                                            padding: '8px 16px', borderRadius: 8, border: 'none',
+                                                            background: 'rgba(162,155,254,0.1)', color: '#a29bfe',
+                                                            fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'none'
+                                                        }}>📸 Snapshot</a>
+                                                    )}
+                                                </div>
+
+                                                <div style={{ fontSize: 11, color: THEME.textMuted, marginTop: 12 }}>
+                                                    Oluşturulma: {new Date(evt.createdAt).toLocaleString('tr-TR')}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
                         </div>
                     )}
 
