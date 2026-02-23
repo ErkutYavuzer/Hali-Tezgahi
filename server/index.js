@@ -5,7 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import os from 'os';
-import { transformToMotif, getAIStatus } from './ai-motif.js';
+import { transformToMotif, getAIStatus, getTransformPrompt, setTransformPrompt } from './ai-motif.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -147,6 +147,42 @@ function emitActivity(type, message, extra = {}) {
   activityFeed.unshift(entry);
   if (activityFeed.length > 50) activityFeed = activityFeed.slice(0, 50);
   io.emit('admin:activity', entry);
+}
+
+// 🎨 Prompt preset'leri
+const PROMPT_PRESETS = [
+  {
+    id: 'kilim-classic',
+    name: '🏺 Klasik Kilim',
+    prompt: `Transform this freehand drawing into a traditional Anatolian Turkish kilim carpet motif.\n\nCRITICAL RULES:\n1. KEEP the same subject/shape from the drawing — if it's a house, make a kilim house motif. If it's a cat, make a kilim cat motif. DO NOT change the subject.\n2. Convert the lines and shapes into geometric kilim style: use stepped lines, diamonds, triangles, zigzag edges\n3. Use traditional Turkish kilim color palette: deep reds, navy blue, gold/saffron, cream, dark brown, forest green\n4. Keep the original composition and positioning\n5. Add a small decorative kilim border frame\n6. Fill background with cream/natural wool color\n7. Flat, textile-like coloring — no gradients, no 3D effects, no photorealism\n8. The result should look like it was hand-woven on a carpet loom with visible thread texture and slight raised embossed relief\n9. Make the motif warm, symmetric where possible, and authentically Turkish\n10. Output a clean, square image`
+  },
+  {
+    id: 'cini-iznik',
+    name: '🔵 İznik Çini',
+    prompt: `Transform this freehand drawing into an İznik-style Turkish ceramic tile motif.\n\nCRITICAL RULES:\n1. KEEP the same subject/shape from the drawing — preserve the original concept\n2. Convert to traditional İznik ceramic style: flowing tulips, carnations, arabesques, intertwining vines\n3. Use classic İznik color palette: cobalt blue, turquoise, coral red, emerald green on white background\n4. Add traditional border pattern with repeating motifs\n5. Flat, hand-painted ceramic look — visible brush strokes\n6. Symmetric and balanced composition\n7. White ceramic background with glossy appearance\n8. No 3D effects, maintain flat tile aesthetic\n9. Output a clean, square image`
+  },
+  {
+    id: 'modern-geo',
+    name: '✨ Modern Geometrik',
+    prompt: `Transform this freehand drawing into a modern geometric art piece inspired by Turkish patterns.\n\nCRITICAL RULES:\n1. KEEP the same subject/shape from the drawing — preserve the concept\n2. Convert to clean geometric shapes: triangles, hexagons, clean lines, minimal curves\n3. Use a modern color palette: soft pastels, muted gold, charcoal, ivory, sage green\n4. Minimalist composition with generous white space\n5. Subtle geometric border\n6. Clean, contemporary aesthetic — blend of Turkish motifs with Scandinavian simplicity\n7. No 3D effects, flat vector-like style\n8. Output a clean, square image`
+  },
+  {
+    id: 'ottoman-palace',
+    name: '👑 Osmanlı Saray',
+    prompt: `Transform this freehand drawing into a luxurious Ottoman palace art motif.\n\nCRITICAL RULES:\n1. KEEP the same subject/shape from the drawing — preserve the concept\n2. Convert to ornate Ottoman style: heavy gold gilding, intricate scrollwork, rumi motifs, hatai flowers\n3. Use Ottoman palace palette: rich gold, deep burgundy, midnight blue, ivory, emerald\n4. Add ornate baroque-influenced border with gold details\n5. Luxurious, regal appearance — like a miniature painting or illuminated manuscript\n6. Detailed textures suggesting gold leaf and fine brushwork\n7. Dark rich background (burgundy or navy) with gold motifs\n8. Output a clean, square image`
+  }
+];
+
+// 🔄 Başlangıçta kaydedilmiş prompt'u yükle
+const PROMPT_FILE = path.join(MOTIFS_DIR, 'prompt_data.json');
+if (fs.existsSync(PROMPT_FILE)) {
+  try {
+    const saved = JSON.parse(fs.readFileSync(PROMPT_FILE, 'utf-8'));
+    if (saved.prompt) {
+      setTransformPrompt(saved.prompt);
+      console.log('🎨 Kaydedilmiş AI prompt yüklendi.');
+    }
+  } catch (e) { /* default prompt kalır */ }
 }
 
 // 💾 VERİ YÜKLEME
@@ -931,6 +967,31 @@ io.on('connection', (socket) => {
     emitActivity('admin', `${retryCount} motif yeniden deneniyor 🔄`);
     socket.emit('admin:info', { message: `${retryCount} motif yeniden deneniyor...` });
     console.log(`🔄 Toplu retry: ${retryCount} motif`);
+  });
+
+  // 🎨 Prompt yönetimi
+  socket.on('admin:get-prompt', ({ pin }) => {
+    if (!verifyAdmin(pin)) return socket.emit('admin:error', { message: 'Yetkisiz' });
+    socket.emit('admin:prompt', {
+      prompt: getTransformPrompt(),
+      presets: PROMPT_PRESETS
+    });
+  });
+
+  socket.on('admin:update-prompt', ({ pin, prompt }) => {
+    if (!verifyAdmin(pin)) return socket.emit('admin:error', { message: 'Yetkisiz' });
+    if (!prompt || prompt.length < 20) return socket.emit('admin:error', { message: 'Prompt çok kısa (min 20 karakter)' });
+    if (prompt.length > 3000) return socket.emit('admin:error', { message: 'Prompt çok uzun (max 3000 karakter)' });
+    setTransformPrompt(prompt);
+    // PVC'ye kaydet
+    try {
+      const promptFile = path.join(MOTIFS_DIR, 'prompt_data.json');
+      fs.writeFileSync(promptFile, JSON.stringify({ prompt, updatedAt: Date.now() }));
+    } catch (e) { console.error('Prompt kaydetme hatası:', e); }
+    emitActivity('admin', 'AI prompt güncellendi 🎨');
+    socket.emit('admin:prompt-updated', { success: true });
+    addToast && socket.emit('admin:info', { message: 'AI prompt güncellendi!' });
+    console.log('🎨 AI prompt güncellendi');
   });
 
   // 👥 Kullanıcı profili (tüm aktif + arşiv verileri)

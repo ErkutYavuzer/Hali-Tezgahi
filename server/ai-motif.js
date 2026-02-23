@@ -34,8 +34,8 @@ let googleApiAvailable = true;
 let googleApiFailCount = 0;
 const GOOGLE_API_MAX_FAILS = 3;
 
-// Gemini dönüşüm prompt'u
-const TRANSFORM_PROMPT = `Transform this freehand drawing into a traditional Anatolian Turkish kilim carpet motif.
+// Gemini dönüşüm prompt'u (admin'den değiştirilebilir)
+let currentPrompt = `Transform this freehand drawing into a traditional Anatolian Turkish kilim carpet motif.
 
 CRITICAL RULES:
 1. KEEP the same subject/shape from the drawing — if it's a house, make a kilim house motif. If it's a cat, make a kilim cat motif. DO NOT change the subject.
@@ -48,6 +48,9 @@ CRITICAL RULES:
 8. The result should look like it was hand-woven on a carpet loom with visible thread texture and slight raised embossed relief
 9. Make the motif warm, symmetric where possible, and authentically Turkish
 10. Output a clean, square image`;
+
+export function getTransformPrompt() { return currentPrompt; }
+export function setTransformPrompt(prompt) { currentPrompt = prompt; }
 
 /**
  * Ana motif dönüşüm pipeline'ı
@@ -116,7 +119,7 @@ async function tryApiGateway(base64DataUrl, userName = 'Anonim') {
                 messages: [{
                     role: 'user',
                     content: [
-                        { type: 'text', text: TRANSFORM_PROMPT + `\n\n11. Write the artist name "${userName}" in small elegant text at the bottom-left corner of the motif, as if it was woven into the carpet.` },
+                        { type: 'text', text: currentPrompt + `\n\n11. Write the artist name "${userName}" in small elegant text at the bottom-left corner of the motif, as if it was woven into the carpet.` },
                         { type: 'image_url', image_url: { url: base64DataUrl } }
                     ]
                 }],
@@ -193,7 +196,7 @@ async function tryGoogleApi(base64DataUrl, userName = 'Anonim') {
             body: JSON.stringify({
                 contents: [{
                     parts: [
-                        { text: TRANSFORM_PROMPT + `\n\n11. Write the artist name "${userName}" in small elegant text at the bottom-left corner of the motif, as if it was woven into the carpet.` },
+                        { text: currentPrompt + `\n\n11. Write the artist name "${userName}" in small elegant text at the bottom-left corner of the motif, as if it was woven into the carpet.` },
                         { inlineData: { mimeType: 'image/png', data: rawBase64 } }
                     ]
                 }],

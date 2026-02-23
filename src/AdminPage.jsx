@@ -411,6 +411,8 @@ export default function AdminPage() {
     const [toasts, setToasts] = useState([]);
     const [activities, setActivities] = useState([]);
     const [showQR, setShowQR] = useState(false);
+    const [promptText, setPromptText] = useState('');
+    const [promptPresets, setPromptPresets] = useState([]);
 
     const socketRef = useRef(null);
     const pinRef = useRef(localStorage.getItem('admin-pin') || '');
@@ -495,6 +497,8 @@ export default function AdminPage() {
         socket.on('admin:activity-feed', ({ activities }) => setActivities(activities || []));
         socket.on('admin:activity', (entry) => setActivities(prev => [entry, ...prev].slice(0, 50)));
         socket.on('admin:info', ({ message }) => addToast(message, 'info'));
+        socket.on('admin:prompt', ({ prompt, presets }) => { setPromptText(prompt || ''); setPromptPresets(presets || []); });
+        socket.on('admin:prompt-updated', () => addToast('AI prompt güncellendi! ✅', 'success'));
 
         socket.on('admin:error', ({ message }) => {
             addToast(message, 'error');
@@ -680,6 +684,8 @@ export default function AdminPage() {
                             } else if (item.id === 'dashboard') {
                                 socket.emit('admin:get-stats', { pin });
                                 socket.emit('admin:get-activity', { pin });
+                            } else if (item.id === 'settings') {
+                                socket.emit('admin:get-prompt', { pin });
                             }
                         }} style={{
                             display: 'flex', alignItems: 'center', gap: 12,
@@ -1056,6 +1062,63 @@ export default function AdminPage() {
                                     </div>
                                 </div>
                             )}
+
+                            {/* 🎨 AI Prompt Editor */}
+                            <div style={{ ...THEME.glass, borderRadius: 24, padding: 32, marginBottom: 24 }}>
+                                <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
+                                    <span style={{ color: THEME.primary }}>🎨</span> AI Motif Prompt'u
+                                </h3>
+                                <p style={{ fontSize: 13, color: THEME.textMuted, marginBottom: 20 }}>
+                                    Çizimlerin hangi stile dönüştürüleceğini belirleyen AI talimatı. Hazır preset seçin veya kendi prompt'unuzu yazın.
+                                </p>
+
+                                {/* Preset Butonları */}
+                                <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+                                    {promptPresets.map(p => (
+                                        <button key={p.id} onClick={() => setPromptText(p.prompt)} style={{
+                                            padding: '10px 16px', borderRadius: 10, border: `1px solid ${THEME.border}`,
+                                            background: promptText === p.prompt ? 'rgba(0,229,255,0.12)' : THEME.surface,
+                                            color: promptText === p.prompt ? THEME.primary : THEME.text,
+                                            fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                                            transition: 'all 0.2s'
+                                        }}>{p.name}</button>
+                                    ))}
+                                </div>
+
+                                {/* Textarea */}
+                                <textarea
+                                    value={promptText}
+                                    onChange={e => setPromptText(e.target.value)}
+                                    style={{
+                                        width: '100%', minHeight: 180, padding: 16, borderRadius: 12,
+                                        background: THEME.surface, border: `1px solid ${THEME.border}`,
+                                        color: THEME.text, fontSize: 13, fontFamily: 'monospace',
+                                        resize: 'vertical', lineHeight: 1.6, outline: 'none',
+                                        transition: 'border-color 0.2s'
+                                    }}
+                                    onFocus={e => e.target.style.borderColor = THEME.primary}
+                                    onBlur={e => e.target.style.borderColor = THEME.border}
+                                />
+
+                                {/* Alt Bar */}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+                                    <span style={{
+                                        fontSize: 12,
+                                        color: promptText.length > 3000 ? THEME.danger : THEME.textMuted
+                                    }}>{promptText.length} / 3000 karakter</span>
+                                    <button onClick={() => {
+                                        socketRef.current?.emit('admin:update-prompt', { pin: pinRef.current, prompt: promptText });
+                                    }} style={{
+                                        padding: '10px 24px', borderRadius: 10, border: 'none',
+                                        background: THEME.primaryGradient, color: '#000',
+                                        fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                                        transition: 'opacity 0.2s'
+                                    }} onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
+                                        onMouseLeave={e => e.currentTarget.style.opacity = '1'}>
+                                        💾 Prompt'u Kaydet
+                                    </button>
+                                </div>
+                            </div>
 
                             {/* Danger Zone */}
                             <div style={{ borderRadius: 24, padding: 32, border: `1px solid rgba(255, 61, 0, 0.3)`, background: 'rgba(255, 61, 0, 0.02)' }}>
