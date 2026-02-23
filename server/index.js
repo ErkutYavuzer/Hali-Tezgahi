@@ -9,17 +9,37 @@ import { transformToMotif, getAIStatus } from './ai-motif.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const DATA_FILE = path.join(__dirname, 'carpet_data.json');
-const ARCHIVE_FILE = path.join(__dirname, 'archive_data.json');
-const SESSIONS_FILE = path.join(__dirname, 'sessions_data.json');
 
-// 📁 Motif dosyaları dizini
+// 📁 Motif dosyaları dizini (PVC mount — kalıcı depolama)
 const MOTIFS_DIR = process.env.MOTIFS_DIR || path.join(__dirname, 'motifs');
 if (!fs.existsSync(MOTIFS_DIR)) fs.mkdirSync(MOTIFS_DIR, { recursive: true });
 
 // 📁 Arşiv dizini (silinmiş dosyalar taşınır)
 const ARCHIVE_DIR = path.join(MOTIFS_DIR, 'archive');
 if (!fs.existsSync(ARCHIVE_DIR)) fs.mkdirSync(ARCHIVE_DIR, { recursive: true });
+
+// 💾 JSON veri dosyaları — PVC'de saklanır (pod restart'ta korunur)
+const DATA_FILE = path.join(MOTIFS_DIR, 'carpet_data.json');
+const ARCHIVE_FILE = path.join(MOTIFS_DIR, 'archive_data.json');
+const SESSIONS_FILE = path.join(MOTIFS_DIR, 'sessions_data.json');
+
+// 🔄 Eski konumdan otomatik migrasyon (bir kerelik)
+function migrateOldData() {
+  const oldFiles = [
+    { old: path.join(__dirname, 'carpet_data.json'), new: DATA_FILE },
+    { old: path.join(__dirname, 'archive_data.json'), new: ARCHIVE_FILE },
+    { old: path.join(__dirname, 'sessions_data.json'), new: SESSIONS_FILE },
+  ];
+  for (const f of oldFiles) {
+    if (fs.existsSync(f.old) && !fs.existsSync(f.new)) {
+      try {
+        fs.copyFileSync(f.old, f.new);
+        console.log(`🔄 Migrasyon: ${path.basename(f.old)} → PVC'ye taşındı`);
+      } catch (e) { console.error(`Migrasyon hatası: ${e.message}`); }
+    }
+  }
+}
+migrateOldData();
 
 // 🌐 YEREL IP TESPİTİ
 function getLocalIp() {
