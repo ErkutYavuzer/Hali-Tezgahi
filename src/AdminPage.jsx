@@ -660,7 +660,21 @@ export default function AdminPage() {
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1 }}>
                     {menuItems.map(item => (
-                        <button key={item.id} onClick={() => setActiveMenu(item.id)} style={{
+                        <button key={item.id} onClick={() => {
+                            setActiveMenu(item.id);
+                            const pin = pinRef.current;
+                            const socket = socketRef.current;
+                            if (!socket || !pin) return;
+                            // Sekmeye özel veri yükle
+                            if (item.id === 'archive') {
+                                socket.emit('admin:get-archive', { pin });
+                                socket.emit('admin:get-sessions', { pin });
+                            } else if (item.id === 'users') {
+                                socket.emit('admin:get-users', { pin });
+                            } else if (item.id === 'dashboard') {
+                                socket.emit('admin:get-stats', { pin });
+                            }
+                        }} style={{
                             display: 'flex', alignItems: 'center', gap: 12,
                             padding: '14px 16px', borderRadius: 12, border: 'none',
                             background: activeMenu === item.id ? 'rgba(0, 229, 255, 0.1)' : 'transparent',
