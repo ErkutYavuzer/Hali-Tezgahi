@@ -182,8 +182,12 @@ function saveSessions() {
   catch (e) { console.error('Oturum kaydetme hatası:', e); }
 }
 
-// 📦 Çizimi arşive taşı (dosyaları silme, archive/ klasörüne kopyala)
+// 📦 Çizimi arşive taşı (dosyaları kullanıcı adı ile birlikte sakla)
 function archiveDrawing(drawing, reason = 'admin-delete') {
+  const safeName = (drawing.userName || 'Anonim').replace(/[^a-zA-Z0-9ğüşöçıİĞÜŞÖÇ]/g, '_').slice(0, 30);
+  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const prefix = `${safeName}_${ts}`;
+
   const archiveEntry = {
     ...drawing,
     deletedAt: Date.now(),
@@ -191,22 +195,36 @@ function archiveDrawing(drawing, reason = 'admin-delete') {
     archivedDrawingFile: null,
     archivedAiFile: null,
   };
-  // Dosyaları archive/ klasörüne taşı
+
+  // Orijinal çizimi archive/ klasörüne kopyala (kullanıcı adı ile)
   if (drawing.drawingFile) {
     const src = path.join(MOTIFS_DIR, drawing.drawingFile);
-    const dest = path.join(ARCHIVE_DIR, drawing.drawingFile);
-    if (fs.existsSync(src)) { try { fs.copyFileSync(src, dest); archiveEntry.archivedDrawingFile = drawing.drawingFile; } catch (e) { } }
+    const archiveName = `${prefix}_original.png`;
+    const dest = path.join(ARCHIVE_DIR, archiveName);
+    if (fs.existsSync(src)) {
+      try { fs.copyFileSync(src, dest); archiveEntry.archivedDrawingFile = archiveName; }
+      catch (e) { console.error('Arşiv kopyalama hatası (orijinal):', e.message); }
+    }
   }
+
+  // AI motifini archive/ klasörüne kopyala (kullanıcı adı ile)
   if (drawing.aiFile) {
     const src = path.join(MOTIFS_DIR, drawing.aiFile);
-    const dest = path.join(ARCHIVE_DIR, drawing.aiFile);
-    if (fs.existsSync(src)) { try { fs.copyFileSync(src, dest); archiveEntry.archivedAiFile = drawing.aiFile; } catch (e) { } }
+    const archiveName = `${prefix}_motif.png`;
+    const dest = path.join(ARCHIVE_DIR, archiveName);
+    if (fs.existsSync(src)) {
+      try { fs.copyFileSync(src, dest); archiveEntry.archivedAiFile = archiveName; }
+      catch (e) { console.error('Arşiv kopyalama hatası (motif):', e.message); }
+    }
   }
-  // dataUrl büyük olabilir, arşive kaydetme
+
+  // base64 büyük olabilir, metadata'dan çıkar
   delete archiveEntry.dataUrl;
   delete archiveEntry.aiDataUrl;
+
   archive.push(archiveEntry);
   saveArchive();
+  console.log(`📦 Arşive kaydedildi: [${safeName}] reason=${reason} (orijinal: ${archiveEntry.archivedDrawingFile ? '✅' : '❌'}, motif: ${archiveEntry.archivedAiFile ? '✅' : '❌'})`);
   return archiveEntry;
 }
 
@@ -447,14 +465,30 @@ io.on('connection', (socket) => {
     socket.emit('ai-mode', aiEnabled);
   });
 
-  // 🧹 Manuel sıfırlama
+  // 🧹 Manuel sıfırlama (arşive kaydederek sil)
   socket.on('manual-reset', () => {
     console.log('🧹 MANUEL TEMİZLİK EMRİ GELDİ!');
+
+    // Önce tüm çizimleri arşive kaydet
+    drawings.forEach(d => archiveDrawing(d, 'manual-reset'));
+
+    // Aktif dosyaları sil (archive/ hariç)
+    try {
+      const files = fs.readdirSync(MOTIFS_DIR);
+      files.forEach(f => {
+        if (f === 'archive') return;
+        const p = path.join(MOTIFS_DIR, f);
+        if (fs.statSync(p).isFile()) fs.unlinkSync(p);
+      });
+    } catch (err) {
+      console.error('Dosya silme hatası:', err.message);
+    }
+
     drawings = [];
     io.emit('carpet-reset');
     io.emit('drawing-count', 0);
     saveData();
-    console.log('✨ Sunucu hafızası sıfırlandı.');
+    console.log(`✨ Sunucu hafızası sıfırlandı. (${archive.length} kayıt arşivde)`);
   });
 
   // ═══════════════════════════════════════════════════
