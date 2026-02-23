@@ -416,6 +416,8 @@ export default function AdminPage() {
     const [eventsData, setEventsData] = useState([]);
     const [newEventName, setNewEventName] = useState('');
     const [newEventLocation, setNewEventLocation] = useState('');
+    const [archiveSearch, setArchiveSearch] = useState('');
+    const [archiveSelected, setArchiveSelected] = useState(new Set());
 
     const socketRef = useRef(null);
     const pinRef = useRef(localStorage.getItem('admin-pin') || '');
@@ -629,7 +631,7 @@ export default function AdminPage() {
             background: THEME.bgGradient,
             fontFamily: "'Inter', -apple-system, sans-serif",
             color: THEME.text, overflow: 'hidden'
-        }}>
+        }} className="admin-layout">
             <style>{`
                 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
                 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -649,10 +651,35 @@ export default function AdminPage() {
                 }
                 @keyframes spin { 100% { transform: rotate(360deg); } }
                 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+                /* 📱 Responsive */
+                @media (max-width: 1024px) {
+                    .admin-sidebar { width: 220px !important; padding: 24px 14px !important; }
+                    .admin-sidebar .sidebar-title { display: none !important; }
+                    .admin-content { padding: 24px !important; }
+                    .dashboard-live-grid { grid-template-columns: 1fr !important; }
+                }
+                @media (max-width: 768px) {
+                    .admin-layout { flex-direction: column !important; }
+                    .admin-sidebar {
+                        width: 100% !important; flex-direction: row !important;
+                        overflow-x: auto !important; padding: 8px 12px !important;
+                        border-right: none !important; border-bottom: 1px solid rgba(255,255,255,0.06) !important;
+                        position: sticky !important; top: 0 !important; z-index: 100 !important;
+                        gap: 4px !important;
+                    }
+                    .admin-sidebar .sidebar-title { display: none !important; }
+                    .admin-sidebar button {
+                        padding: 10px 12px !important; font-size: 12px !important;
+                        min-width: auto !important; white-space: nowrap !important;
+                    }
+                    .admin-content { padding: 16px !important; min-height: auto !important; }
+                    .dashboard-live-grid { grid-template-columns: 1fr !important; }
+                    .stat-grid { grid-template-columns: repeat(2, 1fr) !important; }
+                }
             `}</style>
 
-            {/* ═══ SIDEBAR ═══ */}
-            <div style={{
+            <div className="admin-sidebar" style={{
                 width: 260, flexShrink: 0,
                 background: 'rgba(11, 14, 20, 0.8)',
                 borderRight: `1px solid ${THEME.border}`,
@@ -660,7 +687,7 @@ export default function AdminPage() {
                 padding: '32px 20px', zIndex: 50,
                 backdropFilter: 'blur(40px)'
             }}>
-                <div style={{ marginBottom: 48, display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div className="sidebar-title" style={{ marginBottom: 48, display: 'flex', alignItems: 'center', gap: 12 }}>
                     <div style={{
                         width: 36, height: 36, borderRadius: 10,
                         background: THEME.primaryGradient,
@@ -734,8 +761,7 @@ export default function AdminPage() {
                 </div>
             </div>
 
-            {/* ═══ MAIN CONTENT ═══ */}
-            <div style={{ flex: 1, padding: '40px 60px', overflowY: 'auto' }}>
+            <div className="admin-content" style={{ flex: 1, padding: '40px 60px', overflowY: 'auto' }}>
                 <div style={{ maxWidth: 1200, margin: '0 auto' }}>
 
                     {/* Header Top */}
@@ -758,7 +784,7 @@ export default function AdminPage() {
                     {activeMenu === 'dashboard' && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
                             {/* Stats Grid */}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
+                            <div className="stat-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
                                 <StatCard icon="🎨" label="Toplam Çizim" value={drawings.length} subtext={`Max: ${maxDrawings}`} color={THEME.primary} />
                                 <StatCard icon="✨" label="Başarılı AI Motif" value={aiDone} color={THEME.success} />
                                 <StatCard icon="⚠️" label="Üretilemeyen Motif" value={aiFailed} color={THEME.danger} />
@@ -810,7 +836,7 @@ export default function AdminPage() {
                             </div>
 
                             {/* 🖥️ Canlı Halı Önizleme + Hızlı Aksiyonlar */}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(400px, 2fr) minmax(250px, 1fr)', gap: 24 }}>
+                            <div className="dashboard-live-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(400px, 2fr) minmax(250px, 1fr)', gap: 24 }}>
                                 {/* Canlı Halı */}
                                 <div style={{ ...THEME.glass, borderRadius: 24, overflow: 'hidden', position: 'relative' }}>
                                     <div style={{ padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${THEME.border}` }}>
@@ -1312,9 +1338,34 @@ export default function AdminPage() {
                                 </div>
                             )}
 
+                            {/* Arama + Toplu Aksiyon */}
+                            <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
+                                <input
+                                    value={archiveSearch} onChange={e => setArchiveSearch(e.target.value)}
+                                    placeholder="🔍 Kullanıcı adı veya tarih ara..." style={{
+                                        flex: 1, minWidth: 200, padding: '12px 16px', borderRadius: 10,
+                                        background: THEME.surface, border: `1px solid ${THEME.border}`,
+                                        color: THEME.text, fontSize: 14, fontFamily: 'inherit', outline: 'none'
+                                    }}
+                                />
+                                {archiveSelected.size > 0 && (
+                                    <a href={`${serverUrl}/api/archive/download?ids=${[...archiveSelected].join(',')}`}
+                                        style={{
+                                            padding: '12px 20px', borderRadius: 10, border: 'none',
+                                            background: THEME.primaryGradient, color: '#000',
+                                            fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                                            textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 6
+                                        }}>📥 {archiveSelected.size} dosya indir (ZIP)
+                                    </a>
+                                )}
+                            </div>
+
                             {/* Silinmiş Çizimler */}
                             <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <span>🗑️</span> Silinmiş Çizimler ({archiveData.length})
+                                <span>🗑️</span> Silinmiş Çizimler ({(() => {
+                                    const q = archiveSearch.toLowerCase().trim();
+                                    return q ? archiveData.filter(a => (a.userName || '').toLowerCase().includes(q) || new Date(a.timestamp).toLocaleDateString('tr-TR').includes(q)).length : archiveData.length;
+                                })()})
                             </h3>
                             {archiveData.length === 0 ? (
                                 <div style={{ ...THEME.glass, borderRadius: 20, padding: 60, textAlign: 'center', color: THEME.textMuted }}>
@@ -1323,11 +1374,26 @@ export default function AdminPage() {
                                 </div>
                             ) : (
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
-                                    {archiveData.slice().reverse().map(a => {
+                                    {archiveData.slice().reverse().filter(a => {
+                                        const q = archiveSearch.toLowerCase().trim();
+                                        if (!q) return true;
+                                        return (a.userName || '').toLowerCase().includes(q) || new Date(a.timestamp).toLocaleDateString('tr-TR').includes(q);
+                                    }).map(a => {
+                                        const isSelected = archiveSelected.has(a.id || a.originalId);
                                         const archiveUrl = a.archivedDrawingFile ? `${serverUrl}/motifs/archive/${a.archivedDrawingFile}` : null;
                                         const archiveAiUrl = a.archivedAiFile ? `${serverUrl}/motifs/archive/${a.archivedAiFile}` : null;
                                         return (
-                                            <div key={a.id} style={{ ...THEME.glass, borderRadius: 16, overflow: 'hidden' }}>
+                                            <div key={a.id} style={{ ...THEME.glass, borderRadius: 16, overflow: 'hidden', border: isSelected ? `2px solid ${THEME.primary}` : '2px solid transparent', transition: 'border-color 0.2s' }}>
+                                                {/* Seçim checkbox */}
+                                                <div style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${THEME.border}` }}>
+                                                    <input type="checkbox" checked={isSelected} onChange={() => {
+                                                        const next = new Set(archiveSelected);
+                                                        const key = a.id || a.originalId;
+                                                        if (next.has(key)) next.delete(key); else next.add(key);
+                                                        setArchiveSelected(next);
+                                                    }} style={{ accentColor: THEME.primary }} />
+                                                    <span style={{ fontSize: 12, color: THEME.textMuted }}>{isSelected ? 'Seçili' : 'Seç'}</span>
+                                                </div>
                                                 <div style={{ display: 'flex', height: 120, background: '#000' }}>
                                                     {archiveUrl && <img src={archiveUrl} alt="çizim" style={{ flex: 1, height: '100%', objectFit: 'cover', opacity: 0.6, cursor: 'pointer' }} onClick={() => setPreviewModal({ isOpen: true, src: archiveUrl, title: `${a.userName} - Orijinal (Arşiv)` })} />}
                                                     {archiveAiUrl && <img src={archiveAiUrl} alt="motif" style={{ flex: 1, height: '100%', objectFit: 'cover', opacity: 0.6, cursor: 'pointer' }} onClick={() => setPreviewModal({ isOpen: true, src: archiveAiUrl, title: `${a.userName} - AI Motif (Arşiv)` })} />}

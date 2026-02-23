@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { io } from 'socket.io-client';
 import { CONFIG, PALETTE_CATEGORIES, THEME } from './constants';
+import { LANG, getLang, setLang as setLangStorage } from './i18n';
 
 // 🎨 Fırça boyutları
 const BRUSH_SIZES = [3, 6, 10, 16, 24];
@@ -81,6 +82,9 @@ export default function ClientPage() {
   const [sendState, setSendState] = useState('idle'); // idle | sending | success
   const [activeCat, setActiveCat] = useState(0);
   const [userName, setUserName] = useState(() => localStorage.getItem('carpet-user-name') || '');
+  const [lang, setLangState] = useState(getLang);
+  const T = LANG[lang] || LANG.tr;
+  const toggleLang = () => { const next = lang === 'tr' ? 'en' : 'tr'; setLangState(next); setLangStorage(next); };
 
   // Canvas başlat
   useEffect(() => {
@@ -825,7 +829,7 @@ export default function ClientPage() {
               setUserName(e.target.value);
               localStorage.setItem('carpet-user-name', e.target.value);
             }}
-            placeholder="Adınızı yazın..."
+            placeholder={T.namePlaceholder}
             style={{
               flex: 1, padding: '10px 14px', borderRadius: '12px',
               border: '1px solid rgba(255,215,0,0.2)',
@@ -876,11 +880,11 @@ export default function ClientPage() {
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
           }}>
           {sendState === 'success' ? (
-            <>✈️ HALIYA UÇUYOR!</>
+            <>✈️ {lang === 'tr' ? 'HALIYA UÇUYOR!' : 'FLYING TO CARPET!'}</>
           ) : sendState === 'sending' ? (
-            <>⏳ GÖNDERİLİYOR...</>
+            <>⏳ {T.sending}</>
           ) : (
-            <>🧶 ÇİZİMİ DOKULA</>
+            <>🧶 {lang === 'tr' ? 'ÇİZİMİ DOKULA' : 'WEAVE DRAWING'}</>
           )}
         </button>
 
@@ -894,7 +898,18 @@ export default function ClientPage() {
           transition: 'all 0.3s',
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
         }}>
-          <span style={{ fontSize: '14px' }}>🗑️</span> TEMİZLE
+          <span style={{ fontSize: '14px' }}>🗑️</span> {T.clear}
+        </button>
+
+        {/* 🌍 Dil Toggle */}
+        <button onClick={toggleLang} style={{
+          width: '100%', padding: '10px', borderRadius: '10px', marginTop: '8px',
+          border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)',
+          color: THEME.textMuted || '#aaa', fontWeight: '600', fontSize: '13px',
+          fontFamily: 'inherit', cursor: 'pointer', transition: 'all 0.3s',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px'
+        }}>
+          {lang === 'tr' ? '🇬🇧 English' : '🇹🇷 Türkçe'}
         </button>
       </div>
     </div>

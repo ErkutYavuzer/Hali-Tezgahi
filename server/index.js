@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import os from 'os';
+import archiver from 'archiver';
 import { transformToMotif, getAIStatus, getTransformPrompt, setTransformPrompt } from './ai-motif.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -114,6 +115,39 @@ app.get('/api/motifs/:id/download', (req, res) => {
 // 🖼️ Galeri sayfası (basit HTML)
 app.get('/galeri', (req, res) => {
   res.redirect('/?role=gallery');
+});
+
+// 📦 Arşiv toplu ZIP indirme
+app.get('/api/archive/download', (req, res) => {
+  const ids = (req.query.ids || '').split(',').filter(Boolean);
+  if (ids.length === 0) return res.status(400).json({ error: 'ID listesi gerekli' });
+  
+  const ARCHIVE_DIR = path.join(MOTIFS_DIR, 'archive');
+  const zip = archiver('zip', { zlib: { level: 5 } });
+  const timestamp = new Date().toISOString().slice(0, 10);
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', `attachment; filename="hali-arsiv-${timestamp}.zip"`);
+  zip.pipe(res);
+  
+  let count = 0;
+  for (const id of ids) {
+    const entry = archive.find(a => a.id === id || a.originalId === id);
+    if (!entry) continue;
+    // Arşivdeki dosyaları ekle
+    const files = [entry.archivedFile, entry.archivedAiFile].filter(Boolean);
+    for (const f of files) {
+      const fp = path.join(ARCHIVE_DIR, f);
+      if (fs.existsSync(fp)) { zip.file(fp, { name: f }); count++; }
+    }
+    // Orijinal dosyalar (eski format)
+    if (entry.drawingFile) {
+      const fp = path.join(MOTIFS_DIR, entry.drawingFile);
+      if (fs.existsSync(fp)) { zip.file(fp, { name: entry.drawingFile }); count++; }
+    }
+  }
+  
+  if (count === 0) { res.status(404).json({ error: 'Dosya bulunamadı' }); return; }
+  zip.finalize();
 });
 
 const httpServer = createServer(app);
