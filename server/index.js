@@ -461,7 +461,7 @@ io.on('connection', (socket) => {
   // 🔐 ADMIN EVENT'LERİ
   // ═══════════════════════════════════════════════════
 
-  const ADMIN_PIN = process.env.ADMIN_PIN || '';
+  const ADMIN_PIN = process.env.ADMIN_PIN || '1234';
 
   function verifyAdmin(pin) {
     return pin === ADMIN_PIN;
