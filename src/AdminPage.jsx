@@ -409,6 +409,8 @@ export default function AdminPage() {
     const [confirmDialog, setConfirmDialog] = useState({ isOpen: false });
     const [previewModal, setPreviewModal] = useState({ isOpen: false, src: '', title: '' });
     const [toasts, setToasts] = useState([]);
+    const [activities, setActivities] = useState([]);
+    const [showQR, setShowQR] = useState(false);
 
     const socketRef = useRef(null);
     const pinRef = useRef(localStorage.getItem('admin-pin') || '');
@@ -490,6 +492,9 @@ export default function AdminPage() {
         socket.on('admin:archive', ({ archive }) => setArchiveData(archive || []));
         socket.on('admin:sessions', ({ sessions }) => setSessionsData(sessions || []));
         socket.on('admin:users', ({ users }) => setUsersData(users || []));
+        socket.on('admin:activity-feed', ({ activities }) => setActivities(activities || []));
+        socket.on('admin:activity', (entry) => setActivities(prev => [entry, ...prev].slice(0, 50)));
+        socket.on('admin:info', ({ message }) => addToast(message, 'info'));
 
         socket.on('admin:error', ({ message }) => {
             addToast(message, 'error');
@@ -634,6 +639,7 @@ export default function AdminPage() {
                     100% { opacity: 1; transform: scale(1); }
                 }
                 @keyframes spin { 100% { transform: rotate(360deg); } }
+                @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
             `}</style>
 
             {/* ═══ SIDEBAR ═══ */}
@@ -673,6 +679,7 @@ export default function AdminPage() {
                                 socket.emit('admin:get-users', { pin });
                             } else if (item.id === 'dashboard') {
                                 socket.emit('admin:get-stats', { pin });
+                                socket.emit('admin:get-activity', { pin });
                             }
                         }} style={{
                             display: 'flex', alignItems: 'center', gap: 12,
@@ -787,6 +794,133 @@ export default function AdminPage() {
                                         </div>
                                     )}
                                 </div>
+                            </div>
+
+                            {/* 🖥️ Canlı Halı Önizleme + Hızlı Aksiyonlar */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(400px, 2fr) minmax(250px, 1fr)', gap: 24 }}>
+                                {/* Canlı Halı */}
+                                <div style={{ ...THEME.glass, borderRadius: 24, overflow: 'hidden', position: 'relative' }}>
+                                    <div style={{ padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${THEME.border}` }}>
+                                        <div style={{ fontSize: 16, fontWeight: 700 }}>🖥️ Canlı Halı</div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                            <div style={{ width: 8, height: 8, borderRadius: '50%', background: THEME.success, animation: 'pulse 2s ease infinite' }} />
+                                            <span style={{ fontSize: 11, color: THEME.success, fontWeight: 600 }}>CANLI</span>
+                                        </div>
+                                    </div>
+                                    <iframe
+                                        src={(() => {
+                                            const base = window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')
+                                                ? `http://${window.location.hostname}:3002`
+                                                : window.location.origin;
+                                            return `${base}/?role=host&embed=1`;
+                                        })()}
+                                        style={{ width: '100%', height: 320, border: 'none', background: '#000' }}
+                                        title="Canlı Halı"
+                                    />
+                                </div>
+
+                                {/* Hızlı Aksiyonlar */}
+                                <div style={{ ...THEME.glass, borderRadius: 24, padding: 24, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                    <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>⚡ Hızlı Aksiyonlar</div>
+                                    <button onClick={() => {
+                                        socketRef.current?.emit('admin:retry-all-failed', { pin: pinRef.current });
+                                        addToast('Başarısız motifler yeniden deneniyor...', 'info');
+                                    }} style={{
+                                        padding: '14px 16px', borderRadius: 12, border: 'none',
+                                        background: 'rgba(0,229,255,0.08)', color: THEME.primary,
+                                        fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                                        display: 'flex', alignItems: 'center', gap: 10, transition: 'background 0.2s'
+                                    }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,229,255,0.15)'}
+                                        onMouseLeave={e => e.currentTarget.style.background = 'rgba(0,229,255,0.08)'}>
+                                        <span style={{ fontSize: 18 }}>🔄</span>
+                                        <div style={{ textAlign: 'left' }}>
+                                            <div>Başarısızları Yeniden Dene</div>
+                                            <div style={{ fontSize: 11, color: THEME.textMuted, marginTop: 2 }}>{drawings.filter(d => d.aiStatus === 'failed').length} motif bekliyor</div>
+                                        </div>
+                                    </button>
+                                    <button onClick={() => setShowQR(!showQR)} style={{
+                                        padding: '14px 16px', borderRadius: 12, border: 'none',
+                                        background: showQR ? 'rgba(0,230,118,0.15)' : 'rgba(0,230,118,0.08)', color: THEME.success,
+                                        fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                                        display: 'flex', alignItems: 'center', gap: 10, transition: 'background 0.2s'
+                                    }}>
+                                        <span style={{ fontSize: 18 }}>📱</span>
+                                        <div style={{ textAlign: 'left' }}>
+                                            <div>{showQR ? 'QR Kodu Gizle' : 'QR Kodu Göster'}</div>
+                                            <div style={{ fontSize: 11, color: THEME.textMuted, marginTop: 2 }}>Ziyaretçi bağlantı kodu</div>
+                                        </div>
+                                    </button>
+                                    <a href={`${serverUrl}/?role=host`} target="_blank" rel="noreferrer" style={{
+                                        padding: '14px 16px', borderRadius: 12, border: 'none',
+                                        background: 'rgba(162,155,254,0.08)', color: '#a29bfe',
+                                        fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                                        display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', transition: 'background 0.2s'
+                                    }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(162,155,254,0.15)'}
+                                        onMouseLeave={e => e.currentTarget.style.background = 'rgba(162,155,254,0.08)'}>
+                                        <span style={{ fontSize: 18 }}>🖥️</span>
+                                        <div style={{ textAlign: 'left' }}>
+                                            <div>Tam Ekran Halı</div>
+                                            <div style={{ fontSize: 11, color: THEME.textMuted, marginTop: 2 }}>Yeni sekmede aç</div>
+                                        </div>
+                                    </a>
+                                    <a href={`${serverUrl}/galeri`} target="_blank" rel="noreferrer" style={{
+                                        padding: '14px 16px', borderRadius: 12, border: 'none',
+                                        background: 'rgba(253,203,110,0.08)', color: '#fdcb6e',
+                                        fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                                        display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', transition: 'background 0.2s'
+                                    }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(253,203,110,0.15)'}
+                                        onMouseLeave={e => e.currentTarget.style.background = 'rgba(253,203,110,0.08)'}>
+                                        <span style={{ fontSize: 18 }}>🌐</span>
+                                        <div style={{ textAlign: 'left' }}>
+                                            <div>Galeri Sayfası</div>
+                                            <div style={{ fontSize: 11, color: THEME.textMuted, marginTop: 2 }}>Tüm motifler</div>
+                                        </div>
+                                    </a>
+                                </div>
+                            </div>
+
+                            {/* QR Kod */}
+                            {showQR && (
+                                <div style={{ ...THEME.glass, borderRadius: 24, padding: 32, textAlign: 'center' }}>
+                                    <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>📱 Ziyaretçi Bağlantı QR Kodu</div>
+                                    <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(`https://${window.location.host}/?role=client`)}`} alt="QR" style={{ borderRadius: 12 }} />
+                                    <div style={{ marginTop: 12, fontSize: 12, color: THEME.textMuted, wordBreak: 'break-all' }}>{`https://${window.location.host}/?role=client`}</div>
+                                </div>
+                            )}
+
+                            {/* 📢 Aktivite Feed */}
+                            <div style={{ ...THEME.glass, borderRadius: 24, padding: 24 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                                    <div style={{ fontSize: 16, fontWeight: 700 }}>📢 Son Aktiviteler</div>
+                                    <span style={{ fontSize: 11, color: THEME.textMuted }}>{activities.length} kayıt</span>
+                                </div>
+                                {activities.length === 0 ? (
+                                    <div style={{ textAlign: 'center', color: THEME.textMuted, padding: '20px 0', fontSize: 13 }}>Henüz aktivite yok...</div>
+                                ) : (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 300, overflowY: 'auto' }}>
+                                        {activities.slice(0, 20).map((a, i) => {
+                                            const colors = { drawing: THEME.primary, 'ai-success': THEME.success, 'ai-failed': THEME.danger, admin: '#a29bfe' };
+                                            const icons = { drawing: '🎨', 'ai-success': '✨', 'ai-failed': '⚠️', admin: '🔧' };
+                                            return (
+                                                <div key={i} style={{
+                                                    display: 'flex', alignItems: 'center', gap: 12,
+                                                    padding: '10px 14px', borderRadius: 10,
+                                                    background: i === 0 ? 'rgba(0,229,255,0.04)' : 'transparent',
+                                                    borderLeft: `3px solid ${colors[a.type] || THEME.textMuted}`,
+                                                    animation: i === 0 ? 'fadeIn 0.5s ease' : 'none'
+                                                }}>
+                                                    <span style={{ fontSize: 16 }}>{icons[a.type] || '📌'}</span>
+                                                    <div style={{ flex: 1 }}>
+                                                        <div style={{ fontSize: 13, fontWeight: 500 }}>{a.message}</div>
+                                                    </div>
+                                                    <div style={{ fontSize: 11, color: THEME.textMuted, whiteSpace: 'nowrap' }}>
+                                                        {new Date(a.timestamp).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}

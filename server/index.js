@@ -139,6 +139,15 @@ let aiEnabled = true;  // 🤖 AI motif AKTİF — Gemini native image generatio
 let drawings = [];
 let archive = [];
 let sessions = [];
+let activityFeed = []; // 🆕 Son aktivite kayıtları (max 50)
+
+// 📢 Aktivite feed'e ekle ve admin'lere bildir
+function emitActivity(type, message, extra = {}) {
+  const entry = { type, message, timestamp: Date.now(), ...extra };
+  activityFeed.unshift(entry);
+  if (activityFeed.length > 50) activityFeed = activityFeed.slice(0, 50);
+  io.emit('admin:activity', entry);
+}
 
 // 💾 VERİ YÜKLEME
 function loadData() {
@@ -425,6 +434,7 @@ io.on('connection', (socket) => {
     }
 
     console.log(`🎨 Yeni çizim! [${userName}] Toplam: ${drawings.length}/${MAX_DRAWINGS}`);
+    emitActivity('drawing', `${userName} yeni çizim yaptı`, { userName, drawingId: drawing.id });
 
     // 🤖 AI motif dönüşümü (async — bloklamaz)
     if (aiEnabled) {
@@ -457,10 +467,12 @@ io.on('connection', (socket) => {
               height: drawing.height
             });
             console.log(`🤖✅ AI motif hazır: ${drawing.id.substring(0, 15)}`);
+            emitActivity('ai-success', `${drawing.userName} motifi hazır ✨`, { userName: drawing.userName, drawingId: drawing.id });
             saveData();
           } else {
             drawing.aiStatus = 'failed';
             console.log(`🤖❌ AI motif başarısız: ${drawing.id.substring(0, 15)}`);
+            emitActivity('ai-failed', `${drawing.userName} motifi üretilemedi ⚠️`, { userName: drawing.userName, drawingId: drawing.id });
           }
           io.emit('ai-status', getAIStatus());
         })
@@ -878,6 +890,47 @@ io.on('connection', (socket) => {
   socket.on('admin:get-sessions', ({ pin }) => {
     if (!verifyAdmin(pin)) return socket.emit('admin:error', { message: 'Yetkisiz' });
     socket.emit('admin:sessions', { sessions });
+  });
+
+  // 📢 Aktivite feed'i getir
+  socket.on('admin:get-activity', ({ pin }) => {
+    if (!verifyAdmin(pin)) return socket.emit('admin:error', { message: 'Yetkisiz' });
+    socket.emit('admin:activity-feed', { activities: activityFeed });
+  });
+
+  // 🔄 Tüm başarısız motifleri yeniden dene
+  socket.on('admin:retry-all-failed', ({ pin }) => {
+    if (!verifyAdmin(pin)) return socket.emit('admin:error', { message: 'Yetkisiz' });
+    const failed = drawings.filter(d => d.aiStatus === 'failed');
+    if (failed.length === 0) {
+      return socket.emit('admin:error', { message: 'Başarısız motif yok' });
+    }
+    let retryCount = 0;
+    failed.forEach(d => {
+      d.aiStatus = 'processing';
+      retryCount++;
+      transformToMotif(d.dataUrl || '', d.userName)
+        .then(aiDataUrl => {
+          if (aiDataUrl) {
+            const motifFilename = `motif_${d.id}.png`;
+            const savedMotif = saveBase64ToFile(aiDataUrl, motifFilename);
+            if (savedMotif) d.aiFile = savedMotif;
+            d.aiDataUrl = aiDataUrl;
+            d.aiStatus = 'done';
+            io.emit('ai-drawing-ready', { id: d.id, aiDataUrl, aiFile: d.aiFile, userName: d.userName, x: d.x, y: d.y, width: d.width, height: d.height });
+            emitActivity('ai-success', `${d.userName} motifi yeniden üretildi ✨`, { userName: d.userName, drawingId: d.id });
+            saveData();
+          } else {
+            d.aiStatus = 'failed';
+            emitActivity('ai-failed', `${d.userName} retry başarısız ⚠️`, { userName: d.userName, drawingId: d.id });
+          }
+          io.emit('ai-status', getAIStatus());
+        })
+        .catch(() => { d.aiStatus = 'failed'; });
+    });
+    emitActivity('admin', `${retryCount} motif yeniden deneniyor 🔄`);
+    socket.emit('admin:info', { message: `${retryCount} motif yeniden deneniyor...` });
+    console.log(`🔄 Toplu retry: ${retryCount} motif`);
   });
 
   // 👥 Kullanıcı profili (tüm aktif + arşiv verileri)
