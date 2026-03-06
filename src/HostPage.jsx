@@ -70,7 +70,7 @@ function BreathingCarpet({ socket, onCarpetCanvasReady }) {
     if (groupRef.current) {
       // 🌬️ Yumuşak rüzgar sallanımı
       // Y pozisyon: yavaş nefes alma (süzülme hissi)
-      groupRef.current.position.y = 22 + Math.sin(t * 0.3) * 0.6;
+      groupRef.current.position.y = 22 + Math.sin(t * 0.3) * 0.15;
       // Y rotation: hafif yalpalama
       groupRef.current.rotation.y = Math.sin(t * 0.15) * 0.012;
     }
