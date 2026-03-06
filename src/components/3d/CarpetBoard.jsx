@@ -1096,7 +1096,7 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children, onCarpetCanva
             });
 
             // Tüm animasyonlar bittikten sonra callback
-            const totalFlyTime = resolvedDrawings.length * STAGGER_MS + 3000; // stagger + uçuş süresi
+            const totalFlyTime = resolvedDrawings.length * STAGGER_MS + 8000; // stagger + uçuş süresi
             setTimeout(() => {
                 console.log('🎉 Kutlama replay tamamlandı!');
                 if (onCelebrationDone) onCelebrationDone();

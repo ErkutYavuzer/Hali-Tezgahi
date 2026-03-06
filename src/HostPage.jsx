@@ -278,7 +278,7 @@ export default function HostPage() {
         }
       }, 500);
 
-      // ⏰ Fallback: 15 saniye sonra celebration göster (animasyon başarısız olursa)
+      // ⏰ Fallback: 45 saniye sonra celebration göster (animasyon başarısız olursa)
       setTimeout(() => {
         setShowCelebration(prev => {
           if (!prev) {
@@ -287,7 +287,7 @@ export default function HostPage() {
           }
           return prev;
         });
-      }, 15000);
+      }, 45000);
     });
 
     // 📸 Admin'den snapshot talebi

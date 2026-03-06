@@ -12,20 +12,33 @@ export default function DownloadPage() {
             ? `http://${window.location.hostname}:3003`
             : window.location.origin;
 
-        // Önce videoyu kontrol et
-        fetch(`${socketUrl}/celebration-video`, { method: 'HEAD' })
-            .then(res => {
-                if (res.ok) {
-                    setVideoUrl(`${socketUrl}/celebration-video`);
-                    setLoading(false);
-                } else {
-                    // Video yoksa resim dene
-                    loadImage(socketUrl);
-                }
-            })
-            .catch(() => {
-                loadImage(socketUrl);
-            });
+        let retryCount = 0;
+        const MAX_RETRIES = 10; // 10 × 3s = 30s max bekleme
+
+        function checkVideo() {
+            fetch(`${socketUrl}/celebration-video`, { method: 'HEAD' })
+                .then(res => {
+                    if (res.ok) {
+                        setVideoUrl(`${socketUrl}/celebration-video?t=${Date.now()}`);
+                        setLoading(false);
+                    } else if (retryCount < MAX_RETRIES) {
+                        retryCount++;
+                        setTimeout(checkVideo, 3000); // 3 sn sonra tekrar dene
+                    } else {
+                        loadImage(socketUrl);
+                    }
+                })
+                .catch(() => {
+                    if (retryCount < MAX_RETRIES) {
+                        retryCount++;
+                        setTimeout(checkVideo, 3000);
+                    } else {
+                        loadImage(socketUrl);
+                    }
+                });
+        }
+
+        checkVideo();
 
         function loadImage(baseUrl) {
             const socket = io(baseUrl, { transports: ['polling', 'websocket'], upgrade: true });
