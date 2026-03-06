@@ -568,16 +568,13 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children, onCarpetCanva
         ctx.textAlign = 'right';
         ctx.textBaseline = 'bottom';
         const padding = Math.max(6, width * 0.03);
-        const textMetrics = ctx.measureText(name);
-        const textW = textMetrics.width + padding * 2;
-        const textH = fontSize + padding;
-        const bgX = x + width - padding - textMetrics.width - padding;
-        const bgY = y + height - padding - fontSize - padding * 0.5;
-        // Yarı saydam koyu arka plan
-        ctx.fillStyle = 'rgba(30, 15, 5, 0.55)';
-        ctx.fillRect(bgX, bgY, textW, textH + padding * 0.5);
-        // Açık renkli isim (kontrast)
-        ctx.fillStyle = 'rgba(255, 245, 225, 0.95)';
+        // Koyu kontur (outline) — her arka plan üzerinde okunur
+        ctx.strokeStyle = 'rgba(20, 10, 0, 0.9)';
+        ctx.lineWidth = fontSize * 0.15;
+        ctx.lineJoin = 'round';
+        ctx.strokeText(name, x + width - padding, y + height - padding);
+        // Beyaz dolgu — yüksek kontrast
+        ctx.fillStyle = '#ffffff';
         ctx.fillText(name, x + width - padding, y + height - padding);
         ctx.restore();
     }, []);
