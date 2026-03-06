@@ -572,11 +572,11 @@ export default function HostPage() {
 
           {/* 📸 HALIYI İNDİR */}
           <button type="button" onClick={() => {
-            const imageData = getCarpetImageData();
-            if (imageData) {
+            const canvas = document.querySelector('canvas');
+            if (canvas) {
               const link = document.createElement('a');
               link.download = `dijital_motif_${Date.now()}.png`;
-              link.href = imageData;
+              link.href = canvas.toDataURL('image/png');
               link.click();
             }
           }} style={{
