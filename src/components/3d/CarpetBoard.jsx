@@ -950,14 +950,19 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children, onCarpetCanva
         socket.on('initial-carpet', ({ drawings }) => {
             // console.log(`📦 initial-carpet geldi: ${drawings?.length || 0} çizim`);
             // console.log(`📦 ctx durumu: ${!!offscreenCtxRef.current}, textureRef: ${!!textureRef.current}`);
-            if (drawings && drawings.length > 0) {
+            const resolvedDrawings = (drawings || []).map((d) => {
+                const dataUrl = d.dataUrl || (d.drawingFile ? `${window.location.origin}/motifs/${d.drawingFile}` : null);
+                const aiDataUrl = d.aiDataUrl || (d.aiFile ? `${window.location.origin}/motifs/${d.aiFile}` : null);
+                return { ...d, dataUrl, aiDataUrl };
+            });
+            if (resolvedDrawings.length > 0) {
                 const ctx = offscreenCtxRef.current;
                 if (!ctx) {
                     console.error('❌ CANVAS CTX NULL! Çizimler gösterilemez.');
                     return;
                 }
 
-                drawings.forEach((drawing, i) => {
+                resolvedDrawings.forEach((drawing, i) => {
                     // console.log(`📦 [${i}] id=${drawing.id?.substring(0, 12)} ai=${!!drawing.aiDataUrl} dataUrl=${drawing.dataUrl ? 'OK' : 'NULL'} x=${drawing.x} y=${drawing.y} w=${drawing.width} h=${drawing.height}`);
 
                     if (drawing.aiDataUrl && ctx) {
