@@ -180,7 +180,7 @@ function createCarpetMaterial(drawingTexture, normalMap, bumpMap) {
 // CARPET BOARD - TEXTURE-BASED FREE DRAWING RENDER
 // =============================================================================
 
-function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
+function CarpetBoard({ socket, carpetWidth, carpetDepth, children, onCarpetCanvasReady }) {
     const meshRef = useRef();
     const offscreenCanvasRef = useRef(null);
     const offscreenCtxRef = useRef(null);
@@ -227,6 +227,7 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
 
         offscreenCanvasRef.current = canvas;
         offscreenCtxRef.current = ctx;
+        if (onCarpetCanvasReady) onCarpetCanvasReady(canvas);
 
         // Three.js Texture
         const texture = new THREE.CanvasTexture(canvas);
@@ -237,7 +238,7 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
         textureRef.current = texture;
 
         return texture;
-    }, []);
+    }, [onCarpetCanvasReady]);
 
     const drawingTexture = useMemo(() => initCanvas(), [initCanvas]);
 
@@ -323,6 +324,21 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
     const hashNoise = useCallback((x, y, seed) => {
         const n = Math.sin(x * 12.9898 + y * 78.233 + seed * 43.7585) * 43758.5453;
         return n - Math.floor(n); // 0..1
+    }, []);
+
+    // 👁 Göz motifi helper — kilim çerçeve kenarlarındaki "nazarlık" motifi
+    const drawEye = useCallback((ctx, cx, cy, size) => {
+        // Dış elips
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, size, size * 0.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // İç nokta — koyu
+        ctx.save();
+        ctx.fillStyle = '#1a1a2e';
+        ctx.beginPath();
+        ctx.arc(cx, cy, size * 0.25, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
     }, []);
 
     /**
@@ -541,23 +557,7 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
 
         ctx.restore();
         needsUpdateRef.current = true;
-    }, [rgbToHsl, hslToRgb, nearestKilimColor, hashNoise, KILIM_PALETTE]);
-
-
-    // 👁 Göz motifi helper — kilim çerçeve kenarlarındaki "nazarlık" motifi
-    const drawEye = (ctx, cx, cy, size) => {
-        // Dış elips
-        ctx.beginPath();
-        ctx.ellipse(cx, cy, size, size * 0.5, 0, 0, Math.PI * 2);
-        ctx.fill();
-        // İç nokta — koyu
-        ctx.save();
-        ctx.fillStyle = '#1a1a2e';
-        ctx.beginPath();
-        ctx.arc(cx, cy, size * 0.25, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-    };
+    }, [rgbToHsl, hslToRgb, nearestKilimColor, hashNoise, drawEye]);
 
     // ✍️ Motife dokuma estetiğinde isim yazma
     const renderWovenName = useCallback((ctx, name, x, y, width, height) => {
@@ -803,7 +803,7 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children }) {
             }, estimatedLandTime);
         };
         img.src = drawing.dataUrl;
-    }, [canvasToWorld, carpetWidth, carpetDepth, renderWovenName]);
+    }, [canvasToWorld, renderWovenName]);
 
     // 🛬 Piksel konduğunda — canvas'a canlı renk + glow olarak çiz
     const handleLand = useCallback((item) => {

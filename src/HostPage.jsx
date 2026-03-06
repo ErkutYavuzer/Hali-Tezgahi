@@ -60,7 +60,7 @@ function FloatingDust({ count = 80 }) {
 // BackdropGlow kaldırıldı — halı boşlukta süzülüyor, arka plan saf siyah
 
 // 🧶 HALININ RÜZGAR ANİMASYONU — Boşlukta süzülen, hafif sallanan kilim
-function BreathingCarpet({ socket }) {
+function BreathingCarpet({ socket, onCarpetCanvasReady }) {
   const groupRef = useRef();
   const innerRef = useRef();
   const carpetWidth = CONFIG.CARPET_WIDTH;
@@ -86,7 +86,7 @@ function BreathingCarpet({ socket }) {
   return (
     <group ref={groupRef} position={[0, 22, 0]}>
       <group ref={innerRef} rotation={[Math.PI / 2, 0, 0]}>
-        <CarpetBoard socket={socket} carpetWidth={carpetWidth} carpetDepth={carpetDepth}>
+        <CarpetBoard socket={socket} carpetWidth={carpetWidth} carpetDepth={carpetDepth} onCarpetCanvasReady={onCarpetCanvasReady}>
           <CarpetBorder width={carpetWidth} depth={carpetDepth} />
           <CarpetFringes width={carpetWidth} depth={carpetDepth} />
         </CarpetBoard>
@@ -113,6 +113,24 @@ export default function HostPage() {
   const [isMuted, setIsMuted] = useState(false);
   const [volumeLevel, setVolumeLevel] = useState(70);
   const serverIpRef = useRef('');
+  const carpetCanvasRef = useRef(null);
+  const confettiPieces = useMemo(() => {
+    const palette = ['#ffd700', '#ff6b35', '#ff3366', '#4ecdc4', '#667eea', '#ff69b4', '#00ff88', '#ff4444', '#44bbff'];
+    return Array.from({ length: 80 }, (_, idx) => {
+      const size = 6 + Math.random() * 8;
+      return {
+        id: `confetti_${idx}_${Math.random().toString(36).slice(2, 8)}`,
+        left: `${Math.random() * 100}%`,
+        top: `-${10 + Math.random() * 20}px`,
+        size,
+        color: palette[idx % palette.length],
+        borderRadius: Math.random() > 0.5 ? '50%' : '2px',
+        duration: 2 + Math.random() * 3,
+        delay: Math.random() * 2,
+        rotation: Math.random() * 360,
+      };
+    });
+  }, []);
 
   // 🤖 AI Motif State
   const [aiEnabled, setAiEnabled] = useState(true);
@@ -121,6 +139,14 @@ export default function HostPage() {
   const [aiCompletedCount, setAiCompletedCount] = useState(0);
 
   const WEAVER_OPTIONS = [12, 20, 28, 40, 50, 60];
+
+  const getCarpetImageData = useCallback(() => {
+    if (carpetCanvasRef.current) {
+      return carpetCanvasRef.current.toDataURL('image/png');
+    }
+    const canvas = document.querySelector('canvas');
+    return canvas ? canvas.toDataURL('image/png') : null;
+  }, []);
 
   // 🔊 İlk tıklamada ses sistemini başlat
   useEffect(() => {
@@ -177,12 +203,9 @@ export default function HostPage() {
 
       // 3D canvas'tan ekran görüntüsü al ve sunucuya gönder
       setTimeout(() => {
-        const canvas = document.querySelector('canvas');
-        if (canvas) {
-          const imageData = canvas.toDataURL('image/png');
+        const imageData = getCarpetImageData();
+        if (imageData) {
           newSocket.emit('carpet-image-save', imageData);
-
-          // İndirme QR kodu oluştur — browser origin kullan (K8s uyumlu)
           const origin = window.location.origin;
           const downloadUrl = `${origin}/?role=download`;
           const qr = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(downloadUrl)}`;
@@ -203,15 +226,27 @@ export default function HostPage() {
       }, 500);
     });
 
+    // 🧶 Halı görüntüsü talebi (oturum arşivi için)
+    newSocket.on('request-carpet-image', () => {
+      setTimeout(() => {
+        const imageData = getCarpetImageData();
+        if (imageData) {
+          newSocket.emit('carpet-image-save', imageData);
+          console.log('🧶 Halı görüntüsü gönderildi');
+        }
+      }, 300);
+    });
+
     return () => {
       newSocket.off('server-ip');
       newSocket.off('drawing-count');
       newSocket.off('client-count');
       newSocket.off('carpet-complete');
       newSocket.off('take-snapshot');
+      newSocket.off('request-carpet-image');
       newSocket.close();
     };
-  }, []);
+  }, [getCarpetImageData]);
 
   const handleMaxDrawingsChange = useCallback((val) => {
     setMaxDrawings(val);
@@ -302,7 +337,7 @@ export default function HostPage() {
         <FloatingDust count={60} />
 
         {/* 🧶 HALI — nefes alan, boşlukta süzülen */}
-        <BreathingCarpet socket={socket} />
+        <BreathingCarpet socket={socket} onCarpetCanvasReady={(canvas) => { carpetCanvasRef.current = canvas; }} />
 
         {/* ✨ Başlık — halının hemen üstünde, zarif */}
         <group position={[0, 40, 1]}>
@@ -340,6 +375,7 @@ export default function HostPage() {
 
       {/* ═══ TOGGLE BUTONU ═══ */}
       <button
+        type="button"
         onClick={() => { setShowPanel(!showPanel); initAudio(); }}
         style={{
           position: 'absolute', top: 20, right: showPanel ? 330 : 20,
@@ -415,7 +451,7 @@ export default function HostPage() {
             <div style={{ fontSize: 11, letterSpacing: 2, opacity: 0.4, marginBottom: 12 }}>DOKUMACI SAYISI</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
               {WEAVER_OPTIONS.map(n => (
-                <button key={n} onClick={() => handleMaxDrawingsChange(n)} style={{
+                <button type="button" key={n} onClick={() => handleMaxDrawingsChange(n)} style={{
                   padding: '12px 0', borderRadius: 12, cursor: 'pointer',
                   fontWeight: 700, fontSize: 16, fontFamily: 'inherit',
                   transition: 'all 0.25s ease',
@@ -473,7 +509,7 @@ export default function HostPage() {
             border: '1px solid rgba(255,255,255,0.08)',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-              <button onClick={() => {
+              <button type="button" onClick={() => {
                 const newMuted = !isMuted;
                 setIsMuted(newMuted);
                 audioManager.setMuted(newMuted);
@@ -535,7 +571,7 @@ export default function HostPage() {
                 <span style={{ fontSize: 18 }}>🤖</span>
                 <span style={{ fontSize: 13, fontWeight: 600, letterSpacing: 0.5 }}>AI Motif</span>
               </div>
-              <button onClick={() => {
+              <button type="button" onClick={() => {
                 const newVal = !aiEnabled;
                 setAiEnabled(newVal);
                 socket?.emit('toggle-ai', newVal);
@@ -571,12 +607,12 @@ export default function HostPage() {
           </div>
 
           {/* 📸 HALIYI İNDİR */}
-          <button onClick={() => {
-            const canvas = document.querySelector('canvas');
-            if (canvas) {
+          <button type="button" onClick={() => {
+            const imageData = getCarpetImageData();
+            if (imageData) {
               const link = document.createElement('a');
               link.download = `dijital_motif_${Date.now()}.png`;
-              link.href = canvas.toDataURL('image/png');
+              link.href = imageData;
               link.click();
             }
           }} style={{
@@ -593,7 +629,7 @@ export default function HostPage() {
           {/* 📱 İNDİRME QR KODU — Sadece halı tamamlandığında */}
           {drawingCount >= maxDrawings && (
             <>
-              <button onClick={() => {
+              <button type="button" onClick={() => {
                 if (!showDownloadQr) {
                   // QR URL oluştur — browser origin kullan (K8s uyumlu)
                   const origin = window.location.origin;
@@ -602,9 +638,9 @@ export default function HostPage() {
                   setDownloadQrUrl(qr);
 
                   // Halı görüntüsünü sunucuya kaydet
-                  const canvas = document.querySelector('canvas');
-                  if (canvas && socket) {
-                    socket.emit('carpet-image-save', canvas.toDataURL('image/png'));
+                  if (socket) {
+                    const imageData = getCarpetImageData();
+                    if (imageData) socket.emit('carpet-image-save', imageData);
                   }
                 }
                 setShowDownloadQr(!showDownloadQr);
@@ -642,7 +678,7 @@ export default function HostPage() {
           )}
 
           {/* TEMİZLE BUTONU — Inline 2-Tık Onay */}
-          <button onClick={handleReset} style={{
+          <button type="button" onClick={handleReset} style={{
             width: '100%', padding: '14px', borderRadius: 14, cursor: 'pointer',
             background: clearConfirm
               ? 'linear-gradient(135deg, rgba(255,59,48,0.3), rgba(255,59,48,0.15))'
@@ -679,18 +715,18 @@ export default function HostPage() {
           animation: 'fadeIn 0.5s ease',
         }}>
           {/* Konfeti parçacıkları */}
-          {Array.from({ length: 80 }).map((_, i) => (
-            <div key={i} style={{
+          {confettiPieces.map((piece) => (
+            <div key={piece.id} style={{
               position: 'absolute',
-              left: `${Math.random() * 100}%`,
-              top: `-${10 + Math.random() * 20}px`,
-              width: `${6 + Math.random() * 8}px`,
-              height: `${6 + Math.random() * 8}px`,
-              background: ['#ffd700', '#ff6b35', '#ff3366', '#4ecdc4', '#667eea', '#ff69b4', '#00ff88', '#ff4444', '#44bbff'][i % 9],
-              borderRadius: Math.random() > 0.5 ? '50%' : '2px',
-              animation: `confettiFall ${2 + Math.random() * 3}s ease-in ${Math.random() * 2}s infinite`,
+              left: piece.left,
+              top: piece.top,
+              width: `${piece.size}px`,
+              height: `${piece.size}px`,
+              background: piece.color,
+              borderRadius: piece.borderRadius,
+              animation: `confettiFall ${piece.duration}s ease-in ${piece.delay}s infinite`,
               opacity: 0.9,
-              transform: `rotate(${Math.random() * 360}deg)`,
+              transform: `rotate(${piece.rotation}deg)`,
             }} />
           ))}
 
@@ -742,7 +778,7 @@ export default function HostPage() {
 
             <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginTop: 10, flexWrap: 'wrap' }}>
               {/* Direkt İndir Butonu */}
-              <button onClick={() => {
+              <button type="button" onClick={() => {
                 const canvas = document.querySelector('canvas');
                 if (canvas) {
                   const link = document.createElement('a');
@@ -762,7 +798,7 @@ export default function HostPage() {
               </button>
 
               {/* Kapat Butonu */}
-              <button onClick={() => setShowCelebration(false)} style={{
+              <button type="button" onClick={() => setShowCelebration(false)} style={{
                 padding: '14px 32px', borderRadius: 16, cursor: 'pointer',
                 background: 'rgba(255,255,255,0.1)',
                 border: '1px solid rgba(255,255,255,0.2)', color: 'rgba(255,255,255,0.8)',
