@@ -782,13 +782,8 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children, onCarpetCanva
             pendingEnhancementsRef.current[drawingId] = setTimeout(() => {
                 const ctx = offscreenCtxRef.current;
                 if (ctx) {
-                    // Enhancement kaldırıldı — AI dönüşümü yapacak
-                    // Sadece isim yaz
-                    try {
-                        renderWovenName(ctx, drawing.userName, drawing.x, drawing.y, drawing.width, drawing.height);
-                    } catch (nameErr) {
-                        console.warn('⚠️ İsim yazma hatası:', nameErr.message);
-                    }
+                    // İsim yazma KALDIRILDI — AI motif geldiğinde morphToAIMotif içinde yazılacak
+                    // Böylece çift isim sorunu ortadan kalkar
                     needsUpdateRef.current = true;
                     // console.log(`🎨 İsim eklendi: ${drawing.userName} (${drawingId.substring(0, 15)})`);
                 }
@@ -869,7 +864,7 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children, onCarpetCanva
         aiImg.onload = () => {
             try {
                 // Sadece çizim alanını temizle — yanındaki motiflere DOKUNMA
-                const pad = 2; // Minimal padding (sadece anti-alias artıkları için)
+                const pad = 10; // Stroke outline temizliği için yeterli marj
                 const clearX = Math.max(0, x - pad);
                 const clearY = Math.max(0, y - pad);
                 const clearW = Math.min(canvas.width - clearX, width + pad * 2);
