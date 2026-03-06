@@ -148,6 +148,10 @@ export default function HostPage() {
     return canvas ? canvas.toDataURL('image/png') : null;
   }, []);
 
+  const handleCarpetCanvasReady = useCallback((canvas) => {
+    carpetCanvasRef.current = canvas;
+  }, []);
+
   // 🔊 İlk tıklamada ses sistemini başlat
   useEffect(() => {
     const handleFirstClick = () => {
@@ -337,7 +341,7 @@ export default function HostPage() {
         <FloatingDust count={60} />
 
         {/* 🧶 HALI — nefes alan, boşlukta süzülen */}
-        <BreathingCarpet socket={socket} onCarpetCanvasReady={(canvas) => { carpetCanvasRef.current = canvas; }} />
+        <BreathingCarpet socket={socket} onCarpetCanvasReady={handleCarpetCanvasReady} />
 
         {/* ✨ Başlık — halının hemen üstünde, zarif */}
         <group position={[0, 40, 1]}>
