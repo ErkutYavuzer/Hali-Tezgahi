@@ -180,7 +180,7 @@ function createCarpetMaterial(drawingTexture, normalMap, bumpMap) {
 // CARPET BOARD - TEXTURE-BASED FREE DRAWING RENDER
 // =============================================================================
 
-function CarpetBoard({ socket, carpetWidth, carpetDepth, children, onCarpetCanvasReady }) {
+function CarpetBoard({ socket, carpetWidth, carpetDepth, children, onCarpetCanvasReady, celebration, onCelebrationDone }) {
     const meshRef = useRef();
     const offscreenCanvasRef = useRef(null);
     const offscreenCtxRef = useRef(null);
@@ -192,6 +192,8 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children, onCarpetCanva
     const flyingQueueRef = useRef([]);
     // 🎨 Bekleyen enhancement timer'ları
     const pendingEnhancementsRef = useRef({});
+    // 🎉 Kutlama modu
+    const celebrationModeRef = useRef(false);
 
     // Yün doku texture'ları
     const woolNormal = useMemo(() => createWoolNormalMap(), []);
@@ -1053,11 +1055,60 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children, onCarpetCanva
         // console.log('🔄 request-initial-carpet gönderiliyor...');
         socket.emit('request-initial-carpet');
 
+        // 🎉 Kutlama replay event'i
+        socket.on('celebration-replay', ({ drawings: celebDrawings }) => {
+            console.log(`🎉 Kutlama replay başlıyor! ${celebDrawings?.length || 0} motif`);
+            const ctx = offscreenCtxRef.current;
+            if (!ctx) return;
+            const canvas = offscreenCanvasRef.current;
+
+            // Canvas'ı temizle
+            ctx.fillStyle = '#f0e4d0';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = 'rgba(80,50,20,0.03)';
+            ctx.lineWidth = 0.3;
+            const gridStep = 4;
+            for (let gx = 0; gx < canvas.width; gx += gridStep) {
+                ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, canvas.height); ctx.stroke();
+            }
+            for (let gy = 0; gy < canvas.height; gy += gridStep) {
+                ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(canvas.width, gy); ctx.stroke();
+            }
+            needsUpdateRef.current = true;
+
+            // Çizimleri resolve et
+            const resolvedDrawings = (celebDrawings || []).map((d) => {
+                const dataUrl = d.dataUrl || (d.drawingFile ? `${window.location.origin}/motifs/${d.drawingFile}` : null);
+                const aiDataUrl = d.aiDataUrl || (d.aiFile ? `${window.location.origin}/motifs/${d.aiFile}` : null);
+                return { ...d, dataUrl, aiDataUrl };
+            });
+
+            // Her motifi kademeli olarak uçurarak getir
+            const STAGGER_MS = 150; // Her motif arası gecikme
+            resolvedDrawings.forEach((drawing, i) => {
+                setTimeout(() => {
+                    // AI motif varsa onu uçur, yoksa orijinal çizimi
+                    const srcUrl = drawing.aiDataUrl || drawing.dataUrl;
+                    if (srcUrl) {
+                        launchFlyingPixels({ ...drawing, dataUrl: srcUrl });
+                    }
+                }, i * STAGGER_MS);
+            });
+
+            // Tüm animasyonlar bittikten sonra callback
+            const totalFlyTime = resolvedDrawings.length * STAGGER_MS + 5000; // stagger + uçuş süresi
+            setTimeout(() => {
+                console.log('🎉 Kutlama replay tamamlandı!');
+                if (onCelebrationDone) onCelebrationDone();
+            }, totalFlyTime);
+        });
+
         return () => {
             socket.off('initial-carpet');
             socket.off('new-drawing');
             socket.off('ai-drawing-ready');
             socket.off('carpet-reset');
+            socket.off('celebration-replay');
         };
     }, [socket, drawWovenImage, launchFlyingPixels, morphToAIMotif, renderWovenName]);
 

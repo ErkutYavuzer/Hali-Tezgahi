@@ -85,7 +85,45 @@ function BreathingCarpet({ socket, onCarpetCanvasReady }) {
   return (
     <group ref={groupRef} position={[0, 22, 0]}>
       <group ref={innerRef} rotation={[Math.PI / 2, 0, 0]}>
-        <CarpetBoard socket={socket} carpetWidth={carpetWidth} carpetDepth={carpetDepth} onCarpetCanvasReady={onCarpetCanvasReady}>
+        <CarpetBoard socket={socket} carpetWidth={carpetWidth} carpetDepth={carpetDepth} onCarpetCanvasReady={onCarpetCanvasReady}
+          onCelebrationDone={() => {
+            console.log('🎉 Kutlama animasyonu tamamlandı — video kaydı durduruluyor...');
+            // 2 sn ekstra bekle (son kare)
+            setTimeout(async () => {
+              // Video kaydını durdur
+              const recorder = mediaRecorderRef.current;
+              if (recorder && recorder.state !== 'inactive') {
+                recorder.stop();
+                // Kaydet ve yükle
+                await new Promise(resolve => {
+                  recorder.onstop = async () => {
+                    const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
+                    console.log(`🎥 Video hazır: ${(blob.size / 1024 / 1024).toFixed(1)} MB`);
+                    try {
+                      const socketUrl = window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')
+                        ? `http://${window.location.hostname}:3003`
+                        : window.location.origin;
+                      await fetch(`${socketUrl}/upload-celebration-video`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'video/webm' },
+                        body: blob,
+                      });
+                      console.log('✅ Video sunucuya yüklendi!');
+                    } catch (err) {
+                      console.error('❌ Video yükleme hatası:', err.message);
+                    }
+                    resolve();
+                  };
+                });
+              }
+              // QR kodu oluştur (video download URL)
+              const origin = window.location.origin;
+              const downloadUrl = `${origin}/?role=download`;
+              const qr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(downloadUrl)}`;
+              setDownloadQrUrl(qr);
+              setShowCelebration(true);
+            }, 2000);
+          }}>
           <CarpetBorder width={carpetWidth} depth={carpetDepth} />
           <CarpetFringes width={carpetWidth} depth={carpetDepth} />
         </CarpetBoard>
@@ -113,6 +151,8 @@ export default function HostPage() {
   const [volumeLevel, setVolumeLevel] = useState(70);
   const serverIpRef = useRef('');
   const carpetCanvasRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const recordedChunksRef = useRef([]);
   const confettiPieces = useMemo(() => {
     const palette = ['#ffd700', '#ff6b35', '#ff3366', '#4ecdc4', '#667eea', '#ff69b4', '#00ff88', '#ff4444', '#44bbff'];
     return Array.from({ length: 80 }, (_, idx) => {
@@ -202,19 +242,35 @@ export default function HostPage() {
     // 🎉 Halı tamamlandı!
     newSocket.on('carpet-complete', ({ total }) => {
       console.log(`🎉 Halı tamamlandı! ${total} çizim`);
-      setShowCelebration(true);
 
-      // 3D canvas'tan ekran görüntüsü al ve sunucuya gönder
-      setTimeout(() => {
-        const imageData = getCarpetImageData();
-        if (imageData) {
-          newSocket.emit('carpet-image-save', imageData);
-          const origin = window.location.origin;
-          const downloadUrl = `${origin}/?role=download`;
-          const qr = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(downloadUrl)}`;
-          setDownloadQrUrl(qr);
+      // 🎥 Video kaydını başlat (3D canvas)
+      try {
+        const canvas = document.querySelector('canvas');
+        if (canvas) {
+          const stream = canvas.captureStream(30); // 30 FPS
+          const recorder = new MediaRecorder(stream, {
+            mimeType: 'video/webm;codecs=vp9',
+            videoBitsPerSecond: 5000000, // 5 Mbps
+          });
+          recordedChunksRef.current = [];
+          recorder.ondataavailable = (e) => {
+            if (e.data.size > 0) recordedChunksRef.current.push(e.data);
+          };
+          recorder.start(100); // 100ms çunk size
+          mediaRecorderRef.current = recorder;
+          console.log('🎥 Video kaydı başladı!');
         }
-      }, 1000);
+      } catch (err) {
+        console.warn('🎥 MediaRecorder başlatılamadı:', err.message);
+      }
+
+      // Statik görüntüyü de kaydet (yedek)
+      setTimeout(() => {
+        const canvas = document.querySelector('canvas');
+        if (canvas) {
+          newSocket.emit('carpet-image-save', canvas.toDataURL('image/png'));
+        }
+      }, 500);
     });
 
     // 📸 Admin'den snapshot talebi
@@ -732,24 +788,24 @@ export default function HostPage() {
                 boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
                 animation: 'fadeInUp 1s ease 0.5s both',
               }}>
-                <img src={downloadQrUrl} alt="İndir" style={{ width: 200, height: 200, display: 'block' }} />
+                <img src={downloadQrUrl} alt="İndir" style={{ width: 250, height: 250, display: 'block' }} />
                 <div style={{
                   marginTop: 12, fontSize: 14, fontWeight: 700,
                   color: '#333', letterSpacing: 1,
-                }}>📱 QR İLE İNDİR</div>
+                }}>📱 QR İLE VİDEOYU İNDİR</div>
               </div>
             )}
 
             <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginTop: 10, flexWrap: 'wrap' }}>
-              {/* Direkt İndir Butonu */}
+              {/* Video İndir Butonu */}
               <button type="button" onClick={() => {
-                const canvas = document.querySelector('canvas');
-                if (canvas) {
-                  const link = document.createElement('a');
-                  link.download = `dijital_motif_${Date.now()}.png`;
-                  link.href = canvas.toDataURL('image/png');
-                  link.click();
-                }
+                const socketUrl = window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')
+                  ? `http://${window.location.hostname}:3003`
+                  : window.location.origin;
+                const link = document.createElement('a');
+                link.download = `dijital_motif_kutlama_${Date.now()}.webm`;
+                link.href = `${socketUrl}/celebration-video`;
+                link.click();
               }} style={{
                 padding: '14px 32px', borderRadius: 16, cursor: 'pointer',
                 background: 'linear-gradient(135deg, #4ecdc4, #44bd32)',
@@ -758,7 +814,7 @@ export default function HostPage() {
                 boxShadow: '0 4px 20px rgba(78,205,196,0.4)',
                 transition: 'all 0.3s', letterSpacing: 1,
               }}>
-                📸 BİLGİSAYARA İNDİR
+                🎬 VİDEOYU İNDİR
               </button>
 
               {/* Kapat Butonu */}

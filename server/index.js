@@ -121,14 +121,14 @@ app.get('/galeri', (req, res) => {
 app.get('/api/archive/download', (req, res) => {
   const ids = (req.query.ids || '').split(',').filter(Boolean);
   if (ids.length === 0) return res.status(400).json({ error: 'ID listesi gerekli' });
-  
+
   const ARCHIVE_DIR = path.join(MOTIFS_DIR, 'archive');
   const zip = archiver('zip', { zlib: { level: 5 } });
   const timestamp = new Date().toISOString().slice(0, 10);
   res.setHeader('Content-Type', 'application/zip');
   res.setHeader('Content-Disposition', `attachment; filename="hali-arsiv-${timestamp}.zip"`);
   zip.pipe(res);
-  
+
   let count = 0;
   for (const id of ids) {
     const entry = archive.find(a => a.id === id || a.originalId === id);
@@ -145,7 +145,7 @@ app.get('/api/archive/download', (req, res) => {
       if (fs.existsSync(fp)) { zip.file(fp, { name: entry.drawingFile }); count++; }
     }
   }
-  
+
   if (count === 0) { res.status(404).json({ error: 'Dosya bulunamadı' }); return; }
   zip.finalize();
 });
@@ -627,7 +627,13 @@ io.on('connection', (socket) => {
     // Son çizim mi? Tamamlanma kontrolü
     if (drawings.length >= MAX_DRAWINGS) {
       console.log('🎉 Halı tamamlandı! Kutlama gönderiliyor...');
-      setTimeout(() => io.emit('carpet-complete', { total: MAX_DRAWINGS }), 500);
+      setTimeout(() => {
+        io.emit('carpet-complete', { total: MAX_DRAWINGS });
+        // 2 saniye sonra celebration replay başlat
+        setTimeout(() => {
+          io.emit('celebration-replay', { drawings });
+        }, 2000);
+      }, 500);
     }
 
     console.log(`🎨 Yeni çizim! [${userName}] Toplam: ${drawings.length}/${MAX_DRAWINGS}`);
@@ -1313,6 +1319,33 @@ app.get('/carpet-image', (req, res) => {
     res.sendFile(imgPath);
   } else {
     res.status(404).send('Henüz halı görüntüsü yok.');
+  }
+});
+
+// 🎬 Kutlama videosu upload endpoint'i (max 50MB)
+app.post('/upload-celebration-video', express.raw({ type: 'video/*', limit: '50mb' }), (req, res) => {
+  try {
+    const videoPath = path.join(__dirname, 'celebration_latest.webm');
+    fs.writeFileSync(videoPath, req.body);
+    console.log(`🎬 Kutlama videosu kaydedildi! (${(req.body.length / 1024 / 1024).toFixed(1)} MB)`);
+    res.json({ ok: true, size: req.body.length });
+  } catch (err) {
+    console.error('❌ Video kaydetme hatası:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 🎬 Kutlama videosu serve endpoint'i
+app.get('/celebration-video', (req, res) => {
+  const videoPath = path.join(__dirname, 'celebration_latest.webm');
+  if (fs.existsSync(videoPath)) {
+    const stat = fs.statSync(videoPath);
+    res.setHeader('Content-Type', 'video/webm');
+    res.setHeader('Content-Length', stat.size);
+    res.setHeader('Content-Disposition', 'inline; filename="dijital_motif_kutlama.webm"');
+    fs.createReadStream(videoPath).pipe(res);
+  } else {
+    res.status(404).send('Henüz kutlama videosu yok.');
   }
 });
 

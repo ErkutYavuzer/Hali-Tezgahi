@@ -2,45 +2,59 @@ import React, { useState, useEffect } from 'react';
 import { io } from 'socket.io-client';
 
 export default function DownloadPage() {
+    const [videoUrl, setVideoUrl] = useState('');
     const [imageUrl, setImageUrl] = useState('');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
 
     useEffect(() => {
-        // Socket.io ile sunucuya bağlan (zaten çalışan bağlantı, firewall sorunu yok)
         const socketUrl = window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')
             ? `http://${window.location.hostname}:3003`
             : window.location.origin;
 
-        const socket = io(socketUrl, {
-            transports: ['polling', 'websocket'],
-            upgrade: true
-        });
+        // Önce videoyu kontrol et
+        fetch(`${socketUrl}/celebration-video`, { method: 'HEAD' })
+            .then(res => {
+                if (res.ok) {
+                    setVideoUrl(`${socketUrl}/celebration-video`);
+                    setLoading(false);
+                } else {
+                    // Video yoksa resim dene
+                    loadImage(socketUrl);
+                }
+            })
+            .catch(() => {
+                loadImage(socketUrl);
+            });
 
-        socket.on('connect', () => {
-            // Sunucudan halı görüntüsünü iste
-            socket.emit('request-carpet-image');
-        });
-
-        socket.on('carpet-image-data', (dataUrl) => {
-            if (dataUrl) {
-                setImageUrl(dataUrl);
+        function loadImage(baseUrl) {
+            const socket = io(baseUrl, { transports: ['polling', 'websocket'], upgrade: true });
+            socket.on('connect', () => { socket.emit('request-carpet-image'); });
+            socket.on('carpet-image-data', (dataUrl) => {
+                if (dataUrl) {
+                    setImageUrl(dataUrl);
+                } else {
+                    setError('Henüz halı görüntüsü yok');
+                }
                 setLoading(false);
-            } else {
-                setError('Henüz halı görüntüsü yok');
+                socket.close();
+            });
+            socket.on('connect_error', () => {
+                setError('Sunucuya bağlanılamıyor');
                 setLoading(false);
-            }
-        });
-
-        socket.on('connect_error', () => {
-            setError('Sunucuya bağlanılamıyor');
-            setLoading(false);
-        });
-
-        return () => socket.close();
+            });
+        }
     }, []);
 
-    const handleDownload = () => {
+    const handleDownloadVideo = () => {
+        if (!videoUrl) return;
+        const link = document.createElement('a');
+        link.download = `dijital_motif_kutlama_${Date.now()}.webm`;
+        link.href = videoUrl;
+        link.click();
+    };
+
+    const handleDownloadImage = () => {
         if (!imageUrl) return;
         const link = document.createElement('a');
         link.download = `dijital_motif_${Date.now()}.png`;
@@ -80,7 +94,7 @@ export default function DownloadPage() {
                 <div style={{
                     animation: 'fadeIn 0.5s ease',
                     fontSize: 16, opacity: 0.7,
-                }}>⏳ Halı yükleniyor...</div>
+                }}>⏳ Yükleniyor...</div>
             )}
 
             {error && (
@@ -95,7 +109,45 @@ export default function DownloadPage() {
                 </div>
             )}
 
-            {imageUrl && (
+            {/* 🎬 Video */}
+            {videoUrl && (
+                <div style={{ animation: 'fadeIn 0.8s ease', textAlign: 'center', width: '100%', maxWidth: 500, margin: '0 auto' }}>
+                    <div style={{
+                        borderRadius: 16, overflow: 'hidden',
+                        boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
+                        border: '2px solid rgba(255,215,0,0.3)',
+                        marginBottom: 24,
+                    }}>
+                        <video
+                            src={videoUrl}
+                            autoPlay
+                            loop
+                            muted
+                            playsInline
+                            style={{ width: '100%', display: 'block' }}
+                        />
+                    </div>
+
+                    <button onClick={handleDownloadVideo} style={{
+                        padding: '16px 40px', borderRadius: 16, cursor: 'pointer',
+                        background: 'linear-gradient(135deg, #4ecdc4, #44bd32)',
+                        border: 'none', color: 'white', fontWeight: 700, fontSize: 18,
+                        fontFamily: "'Inter', sans-serif",
+                        boxShadow: '0 4px 24px rgba(78,205,196,0.4)',
+                        transition: 'all 0.3s', letterSpacing: 1,
+                        width: '90%', maxWidth: 300,
+                    }}>
+                        🎬 VİDEOYU İNDİR
+                    </button>
+
+                    <div style={{ marginTop: 16, fontSize: 12, opacity: 0.4 }}>
+                        Kolektif sanat eserimizin kutlama anı ✨
+                    </div>
+                </div>
+            )}
+
+            {/* 📷 Resim (video yoksa fallback) */}
+            {!videoUrl && imageUrl && (
                 <div style={{ animation: 'fadeIn 0.8s ease', textAlign: 'center', width: '100%' }}>
                     <div style={{
                         borderRadius: 16, overflow: 'hidden',
@@ -108,7 +160,7 @@ export default function DownloadPage() {
                         }} />
                     </div>
 
-                    <button onClick={handleDownload} style={{
+                    <button onClick={handleDownloadImage} style={{
                         padding: '16px 40px', borderRadius: 16, cursor: 'pointer',
                         background: 'linear-gradient(135deg, #4ecdc4, #44bd32)',
                         border: 'none', color: 'white', fontWeight: 700, fontSize: 18,
@@ -120,9 +172,7 @@ export default function DownloadPage() {
                         📥 ESERİ İNDİR
                     </button>
 
-                    <div style={{
-                        marginTop: 16, fontSize: 12, opacity: 0.4,
-                    }}>
+                    <div style={{ marginTop: 16, fontSize: 12, opacity: 0.4 }}>
                         Kolektif sanat eserimizi kaydedin ✨
                     </div>
                 </div>
