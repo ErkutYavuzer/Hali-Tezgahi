@@ -287,7 +287,7 @@ export default function HostPage() {
         {/* Arka plan — halı zemin rengi (siyahlık yok) */}
         <color attach="background" args={['#d4c9b0']} />
 
-        <PerspectiveCamera makeDefault position={[0, 22, 22]} fov={65} />
+        <PerspectiveCamera makeDefault position={[0, 22, 18]} fov={70} />
 
         {/* ═══════════════════════════════════════════════════ */}
         {/* 🌟 MÜZE AYDINLATMASI — Halı yıldız, sahne karanlık */}
