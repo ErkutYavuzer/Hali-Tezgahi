@@ -755,14 +755,14 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children, onCarpetCanva
                     curve.tension = 0.4;
 
                     const color = `rgb(${r},${g},${b})`;
-                    const speed = 0.15 + Math.random() * 0.08; // Değişken hız
+                    const speed = 0.5 + Math.random() * 0.2; // Hızlı uçuş (~2.5sn)
 
                     flyingQueueRef.current.push({
                         id: now + Math.random() + pixelIndex,
                         curve,
                         progress: 0,
                         speed,
-                        startTime: now + pixelIndex * 3,
+                        startTime: now + pixelIndex * 0.5,
                         landed: false,
                         color,
                         destX,
@@ -780,7 +780,7 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children, onCarpetCanva
             try { audioManager.playWhoosh(); } catch (e) { }
 
             // 🎨 Pikseller konduktan sonra → enhancement + isim yaz
-            const estimatedLandTime = Math.min(pixelIndex * 3 + 2000, 5000);
+            const estimatedLandTime = Math.min(pixelIndex * 0.5 + 3000, 4000);
             const drawingId = drawing.id || `${Date.now()}`;
 
             // Önceki timer varsa iptal et
@@ -1110,7 +1110,7 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children, onCarpetCanva
                 });
 
                 // Tüm animasyonlar bittikten sonra callback
-                const totalFlyTime = resolvedDrawings.length * STAGGER_MS + 8000;
+                const totalFlyTime = resolvedDrawings.length * STAGGER_MS + 4000;
                 setTimeout(() => {
                     console.log('🎉 Kutlama replay tamamlandı!');
                     celebrationModeRef.current = false;
