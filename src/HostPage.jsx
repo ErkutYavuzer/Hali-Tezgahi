@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { Text } from '@react-three/drei';
-import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
+import { PerspectiveCamera } from '@react-three/drei';
 import { io } from 'socket.io-client';
 import * as THREE from 'three';
 import CarpetBoard from './components/3d/CarpetBoard';
@@ -61,14 +60,31 @@ function FloatingDust({ count = 80 }) {
 
 // 🧶 HALININ RÜZGAR ANİMASYONU — Boşlukta süzülen, hafif sallanan kilim
 function BreathingCarpet({ socket, onCarpetCanvasReady }) {
+  const groupRef = useRef();
+  const innerRef = useRef();
   const carpetWidth = CONFIG.CARPET_WIDTH;
   const carpetDepth = CONFIG.CARPET_DEPTH;
 
-  // Animasyon yok — halı sabit duruyor (top-down görünüm)
-  // NOT: CarpetBoard mesh'i zaten kendi içinde rotation={[-Math.PI/2, 0, 0]} uyguluyor
+  useFrame((state) => {
+    const t = state.clock.elapsedTime;
+    if (groupRef.current) {
+      // 🌬️ Yumuşak rüzgar sallanımı
+      // Y pozisyon: yavaş nefes alma (süzülme hissi)
+      groupRef.current.position.y = 22 + Math.sin(t * 0.3) * 0.6;
+      // Y rotation: hafif yalpalama
+      groupRef.current.rotation.y = Math.sin(t * 0.15) * 0.012;
+    }
+    if (innerRef.current) {
+      // X rotation: öne-arkaya rüzgar eğimi (tabii halat etkisi)
+      innerRef.current.rotation.x = Math.PI / 2 + Math.sin(t * 0.2) * 0.015;
+      // Z rotation: sola-sağa hafif eğim (rüzgar değişimi)
+      innerRef.current.rotation.z = Math.sin(t * 0.25 + 1.5) * 0.008;
+    }
+  });
+
   return (
-    <group position={[0, 0, 0]}>
-      <group>
+    <group ref={groupRef} position={[0, 22, 0]}>
+      <group ref={innerRef} rotation={[Math.PI / 2, 0, 0]}>
         <CarpetBoard socket={socket} carpetWidth={carpetWidth} carpetDepth={carpetDepth} onCarpetCanvasReady={onCarpetCanvasReady}>
           <CarpetBorder width={carpetWidth} depth={carpetDepth} />
           <CarpetFringes width={carpetWidth} depth={carpetDepth} />
@@ -266,18 +282,12 @@ export default function HostPage() {
     <div style={{ width: '100vw', height: '100vh', background: 'radial-gradient(ellipse at 50% 35%, #0c0a14 0%, #030305 60%, #000000 100%)' }}>
       <Canvas
         shadows dpr={[1, 2]}
-        orthographic
-        camera={{
-          position: [0, 100, 0],
-          zoom: 18,
-          near: 0.1,
-          far: 500,
-          up: [0, 0, -1],
-        }}
         gl={{ antialias: true, powerPreference: "high-performance", preserveDrawingBuffer: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.2 }}
       >
-        {/* 🌌 Saf siyah arka plan */}
-        <color attach="background" args={['#000000']} />
+        {/* Arka plan — halı zemin rengi (siyahlık yok) */}
+        <color attach="background" args={['#d4c9b0']} />
+
+        <PerspectiveCamera makeDefault position={[0, 22, 26]} fov={60} />
 
         {/* ═══════════════════════════════════════════════════ */}
         {/* 🌟 MÜZE AYDINLATMASI — Halı yıldız, sahne karanlık */}
@@ -292,7 +302,7 @@ export default function HostPage() {
           intensity={60} castShadow
           shadow-mapSize-width={2048} shadow-mapSize-height={2048}
           color="#fff8f0"
-          target-position={[0, 0, 0]}
+          target-position={[0, 22, 0]}
         />
 
         {/* 🌙 İkinci spot — hafif yandan, derinlik veren */}
@@ -320,16 +330,9 @@ export default function HostPage() {
 
         {/* BackdropGlow kaldırıldı — saf siyah arka plan */}
 
-        {/* 🧶 HALI — sabit top-down görünüm */}
+        {/* 🧶 HALI — tam ekran görünüm */}
         <BreathingCarpet socket={socket} onCarpetCanvasReady={handleCarpetCanvasReady} />
 
-        {/* Başlık kaldırıldı — top-down sabit görünümde gereksiz */}
-
-        {/* 🎬 Post-Processing — Sinematik glow */}
-        <EffectComposer disableNormalPass>
-          <Bloom luminanceThreshold={0.3} mipLevels={9} intensity={1.8} radius={0.9} />
-          <Vignette eskil={false} offset={0.12} darkness={0.75} />
-        </EffectComposer>
       </Canvas>
 
       {/* Animasyonlar artık 3D sahnede CarpetBoard/FlyingPixels ile yapılıyor */}
