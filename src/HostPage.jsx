@@ -103,7 +103,7 @@ function BreathingCarpet({ socket, onCarpetCanvasReady }) {
                       const socketUrl = window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')
                         ? `http://${window.location.hostname}:3003`
                         : window.location.origin;
-                      await fetch(`${socketUrl}/upload-celebration-video`, {
+                      await fetch(`${socketUrl}/api/upload-celebration-video`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'video/webm' },
                         body: blob,
@@ -821,7 +821,7 @@ export default function HostPage() {
                   : window.location.origin;
                 const link = document.createElement('a');
                 link.download = `dijital_motif_kutlama_${Date.now()}.webm`;
-                link.href = `${socketUrl}/celebration-video`;
+                link.href = `${socketUrl}/api/celebration-video`;
                 link.click();
               }} style={{
                 padding: '14px 32px', borderRadius: 16, cursor: 'pointer',

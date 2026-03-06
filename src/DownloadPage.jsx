@@ -16,10 +16,10 @@ export default function DownloadPage() {
         const MAX_RETRIES = 10; // 10 × 3s = 30s max bekleme
 
         function checkVideo() {
-            fetch(`${socketUrl}/celebration-video`, { method: 'HEAD' })
+            fetch(`${socketUrl}/api/celebration-video`, { method: 'HEAD' })
                 .then(res => {
                     if (res.ok) {
-                        setVideoUrl(`${socketUrl}/celebration-video?t=${Date.now()}`);
+                        setVideoUrl(`${socketUrl}/api/celebration-video?t=${Date.now()}`);
                         setLoading(false);
                     } else if (retryCount < MAX_RETRIES) {
                         retryCount++;

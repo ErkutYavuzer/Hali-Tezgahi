@@ -1343,7 +1343,7 @@ app.get('/carpet-image', (req, res) => {
 });
 
 // 🎬 Kutlama videosu upload endpoint'i (max 50MB)
-app.post('/upload-celebration-video', express.raw({ type: 'video/*', limit: '50mb' }), (req, res) => {
+app.post('/api/upload-celebration-video', express.raw({ type: 'video/*', limit: '50mb' }), (req, res) => {
   try {
     const videoPath = path.join(__dirname, 'celebration_latest.webm');
     fs.writeFileSync(videoPath, req.body);
@@ -1356,7 +1356,7 @@ app.post('/upload-celebration-video', express.raw({ type: 'video/*', limit: '50m
 });
 
 // 🎬 Kutlama videosu serve endpoint'i
-app.get('/celebration-video', (req, res) => {
+app.get('/api/celebration-video', (req, res) => {
   const videoPath = path.join(__dirname, 'celebration_latest.webm');
   if (fs.existsSync(videoPath)) {
     const stat = fs.statSync(videoPath);
