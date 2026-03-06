@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, PerspectiveCamera, Text } from '@react-three/drei';
+import { Text } from '@react-three/drei';
 import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
 import { io } from 'socket.io-client';
 import * as THREE from 'three';
@@ -61,31 +61,14 @@ function FloatingDust({ count = 80 }) {
 
 // 🧶 HALININ RÜZGAR ANİMASYONU — Boşlukta süzülen, hafif sallanan kilim
 function BreathingCarpet({ socket, onCarpetCanvasReady }) {
-  const groupRef = useRef();
-  const innerRef = useRef();
   const carpetWidth = CONFIG.CARPET_WIDTH;
   const carpetDepth = CONFIG.CARPET_DEPTH;
 
-  useFrame((state) => {
-    const t = state.clock.elapsedTime;
-    if (groupRef.current) {
-      // 🌬️ Yumuşak rüzgar sallanımı
-      // Y pozisyon: yavaş nefes alma (süzülme hissi)
-      groupRef.current.position.y = 22 + Math.sin(t * 0.3) * 0.6;
-      // Y rotation: hafif yalpalama
-      groupRef.current.rotation.y = Math.sin(t * 0.15) * 0.012;
-    }
-    if (innerRef.current) {
-      // X rotation: öne-arkaya rüzgar eğimi (tabii halat etkisi)
-      innerRef.current.rotation.x = Math.PI / 2 + Math.sin(t * 0.2) * 0.015;
-      // Z rotation: sola-sağa hafif eğim (rüzgar değişimi)
-      innerRef.current.rotation.z = Math.sin(t * 0.25 + 1.5) * 0.008;
-    }
-  });
-
+  // Animasyon yok — halı sabit duruyor (top-down görünüm)
+  // NOT: CarpetBoard mesh'i zaten kendi içinde rotation={[-Math.PI/2, 0, 0]} uyguluyor
   return (
-    <group ref={groupRef} position={[0, 22, 0]}>
-      <group ref={innerRef} rotation={[Math.PI / 2, 0, 0]}>
+    <group position={[0, 0, 0]}>
+      <group>
         <CarpetBoard socket={socket} carpetWidth={carpetWidth} carpetDepth={carpetDepth} onCarpetCanvasReady={onCarpetCanvasReady}>
           <CarpetBorder width={carpetWidth} depth={carpetDepth} />
           <CarpetFringes width={carpetWidth} depth={carpetDepth} />
@@ -283,18 +266,18 @@ export default function HostPage() {
     <div style={{ width: '100vw', height: '100vh', background: 'radial-gradient(ellipse at 50% 35%, #0c0a14 0%, #030305 60%, #000000 100%)' }}>
       <Canvas
         shadows dpr={[1, 2]}
+        orthographic
+        camera={{
+          position: [0, 100, 0],
+          zoom: 18,
+          near: 0.1,
+          far: 500,
+          up: [0, 0, -1],
+        }}
         gl={{ antialias: true, powerPreference: "high-performance", preserveDrawingBuffer: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.2 }}
       >
-        {/* 🌌 Saf siyah — halı boşlukta süzülüyor */}
+        {/* 🌌 Saf siyah arka plan */}
         <color attach="background" args={['#000000']} />
-
-        <PerspectiveCamera makeDefault position={[0, 24, 55]} fov={50} />
-        <OrbitControls
-          maxPolarAngle={Math.PI / 1.8} minPolarAngle={Math.PI / 5}
-          minDistance={30} maxDistance={100} target={[0, 22, 0]}
-          enableDamping dampingFactor={0.05}
-          minAzimuthAngle={-Math.PI / 4} maxAzimuthAngle={Math.PI / 4}
-        />
 
         {/* ═══════════════════════════════════════════════════ */}
         {/* 🌟 MÜZE AYDINLATMASI — Halı yıldız, sahne karanlık */}
@@ -309,7 +292,7 @@ export default function HostPage() {
           intensity={60} castShadow
           shadow-mapSize-width={2048} shadow-mapSize-height={2048}
           color="#fff8f0"
-          target-position={[0, 22, 0]}
+          target-position={[0, 0, 0]}
         />
 
         {/* 🌙 İkinci spot — hafif yandan, derinlik veren */}
@@ -337,36 +320,10 @@ export default function HostPage() {
 
         {/* BackdropGlow kaldırıldı — saf siyah arka plan */}
 
-        {/* ✨ Havada süzülen altın toz parçacıkları */}
-        <FloatingDust count={60} />
-
-        {/* 🧶 HALI — nefes alan, boşlukta süzülen */}
+        {/* 🧶 HALI — sabit top-down görünüm */}
         <BreathingCarpet socket={socket} onCarpetCanvasReady={handleCarpetCanvasReady} />
 
-        {/* ✨ Başlık — halının hemen üstünde, zarif */}
-        <group position={[0, 40, 1]}>
-          <Text
-            fontSize={3.2} anchorX="center" anchorY="middle"
-            letterSpacing={0.5}
-          >
-            DİJİTAL MOTİF ATÖLYESİ
-            <meshStandardMaterial
-              color="#f0d880" metalness={0.3} roughness={0.4}
-              emissive="#d4af37" emissiveIntensity={0.5}
-            />
-          </Text>
-          <Text
-            position={[0, -3.5, 0]} fontSize={0.9}
-            anchorX="center" anchorY="middle" letterSpacing={1.0}
-          >
-            İNTERAKTİF KOLEKTİF SANAT DENEYİMİ
-            <meshStandardMaterial
-              color="#c0b8a0" metalness={0.1} roughness={0.5}
-              emissive="#a09070" emissiveIntensity={0.3}
-              transparent opacity={0.85}
-            />
-          </Text>
-        </group>
+        {/* Başlık kaldırıldı — top-down sabit görünümde gereksiz */}
 
         {/* 🎬 Post-Processing — Sinematik glow */}
         <EffectComposer disableNormalPass>

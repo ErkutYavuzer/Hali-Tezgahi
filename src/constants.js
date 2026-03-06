@@ -6,9 +6,9 @@ export const CONFIG = {
     // Çizim canvas çözünürlüğü
     CANVAS_RESOLUTION: 1280,
 
-    // Halı texture çözünürlüğü (host tarafı — 4224x1536 ekran, landscape)
-    TEXTURE_WIDTH: 4224,
-    TEXTURE_HEIGHT: 2534,      // 40:24 oran, landscape
+    // Halı texture çözünürlüğü (2560x512 ekran, landscape)
+    TEXTURE_WIDTH: 2560,
+    TEXTURE_HEIGHT: 512,       // 50:10 oran (5:1), landscape
 
     // Çizim yerleştirme
     DRAWING_SCALE: 0.35,       // Motifler daha büyük ve detaylı
