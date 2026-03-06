@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { io } from 'socket.io-client';
 
 const THEME = {
@@ -119,7 +119,6 @@ function PinScreen({ onAuth }) {
                         value={pin}
                         onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
                         placeholder="••••"
-                        autoFocus
                         style={{
                             width: '100%', padding: '18px', borderRadius: 16,
                             border: `1px solid ${error ? THEME.danger : THEME.border}`,
@@ -167,20 +166,12 @@ function PinScreen({ onAuth }) {
 // ═══════════════════════════════════════════════════
 function StatCard({ icon, label, value, subtext, color = THEME.primary }) {
     return (
-        <div style={{
+        <div className="stat-card" style={{
             ...THEME.glass, padding: '24px', borderRadius: 20,
             flex: '1 1 200px', display: 'flex', flexDirection: 'column',
             transition: 'transform 0.3s ease, background 0.3s ease',
             cursor: 'default',
-        }}
-            onMouseEnter={e => {
-                e.currentTarget.style.transform = 'translateY(-4px)';
-                e.currentTarget.style.background = THEME.surfaceHover;
-            }}
-            onMouseLeave={e => {
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.background = THEME.surface;
-            }}>
+        }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
                 <div style={{
                     width: 40, height: 40, borderRadius: 12,
@@ -235,7 +226,7 @@ function ConfirmModal({ isOpen, title, message, onConfirm, onCancel, dangerous =
                     {message}
                 </p>
                 <div style={{ display: 'flex', gap: 12 }}>
-                    <button onClick={onCancel} style={{
+                    <button type="button" onClick={onCancel} style={{
                         flex: 1, padding: '14px', borderRadius: 12, border: 'none',
                         background: 'rgba(255,255,255,0.05)', color: THEME.text,
                         fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit',
@@ -243,7 +234,7 @@ function ConfirmModal({ isOpen, title, message, onConfirm, onCancel, dangerous =
                     }} onMouseEnter={e => e.target.style.background = 'rgba(255,255,255,0.1)'} onMouseLeave={e => e.target.style.background = 'rgba(255,255,255,0.05)'}>
                         İptal
                     </button>
-                    <button onClick={onConfirm} style={{
+                    <button type="button" onClick={onConfirm} style={{
                         flex: 1, padding: '14px', borderRadius: 12, border: 'none',
                         background: dangerous ? THEME.dangerGradient : THEME.primaryGradient,
                         color: dangerous ? '#fff' : '#000', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit',
@@ -268,8 +259,8 @@ function ImageModal({ isOpen, src, title, onClose }) {
             background: 'rgba(5, 7, 10, 0.9)', backdropFilter: 'blur(16px)',
             display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
             animation: 'fadeIn 0.2s ease', padding: 40
-        }} onClick={onClose}>
-            <button onClick={onClose} style={{
+        }}>
+            <button type="button" onClick={onClose} style={{
                 position: 'absolute', top: 24, right: 32,
                 background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '50%',
                 width: 44, height: 44, color: '#fff', fontSize: 20, cursor: 'pointer',
@@ -281,15 +272,23 @@ function ImageModal({ isOpen, src, title, onClose }) {
             <div style={{ fontSize: 16, fontWeight: 700, color: THEME.text, marginBottom: 20 }}>
                 {title || 'Önizleme'}
             </div>
-            <img
-                src={src}
-                alt="Büyük Önizleme"
-                style={{
-                    maxWidth: '100%', maxHeight: '80vh', objectFit: 'contain',
-                    borderRadius: 16, boxShadow: '0 24px 60px rgba(0,0,0,0.6)'
-                }}
-                onClick={e => e.stopPropagation()}
-            />
+            <button type="button" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+            }} style={{
+                background: 'transparent', border: 'none', padding: 0, cursor: 'default'
+            }}>
+                <img
+                    src={src}
+                    alt="Büyük Önizleme"
+                    style={{
+                        maxWidth: '100%', maxHeight: '80vh', objectFit: 'contain',
+                        borderRadius: 16, boxShadow: '0 24px 60px rgba(0,0,0,0.6)'
+                    }}
+                />
+            </button>
         </div>
     );
 }
@@ -316,10 +315,7 @@ function DrawingCard({ drawing, selected, onSelect, onPreview, serverUrl }) {
             cursor: 'pointer', position: 'relative',
             boxShadow: selected ? '0 8px 24px rgba(0, 229, 255, 0.15)' : 'none',
             transform: selected ? 'translateY(-2px)' : 'none'
-        }}
-            onClick={() => onSelect(drawing.id)}
-            onMouseEnter={e => { if (!selected) e.currentTarget.style.borderColor = THEME.borderHover; }}
-            onMouseLeave={e => { if (!selected) e.currentTarget.style.borderColor = THEME.border; }}>
+        }}>
 
             {/* Selection Indicator */}
             <div style={{
@@ -330,23 +326,43 @@ function DrawingCard({ drawing, selected, onSelect, onPreview, serverUrl }) {
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 transition: 'all 0.2s', backdropFilter: 'blur(4px)'
             }}>
-                {selected && <span style={{ color: '#000', fontSize: 12, fontWeight: 900 }}>✓</span>}
+                <input
+                    type="checkbox"
+                    aria-label="Seç"
+                    checked={selected}
+                    onChange={() => onSelect(drawing.id)}
+                    style={{ width: 14, height: 14, accentColor: THEME.primary, cursor: 'pointer' }}
+                />
             </div>
 
             {/* Görseller */}
             <div style={{ display: 'flex', height: 160, position: 'relative', background: '#000' }}>
                 {drawingSrc && (
-                    <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }} onClick={(e) => { e.stopPropagation(); onPreview(drawingSrc, `${drawing.userName} - Orijinal`); }}>
+                    <button
+                        type="button"
+                        onClick={() => onPreview(drawingSrc, `${drawing.userName} - Orijinal`)}
+                        style={{
+                            flex: 1, position: 'relative', overflow: 'hidden',
+                            border: 'none', padding: 0, background: 'transparent', cursor: 'pointer'
+                        }}
+                    >
                         <img src={drawingSrc} alt="çizim" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.8 }} />
                         <div style={{ position: 'absolute', bottom: 6, left: 6, fontSize: 10, background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: 4, color: '#fff' }}>Orijinal</div>
-                    </div>
+                    </button>
                 )}
                 <div style={{ width: 1, background: 'rgba(255,255,255,0.1)' }} />
                 {aiSrc ? (
-                    <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }} onClick={(e) => { e.stopPropagation(); onPreview(aiSrc, `${drawing.userName} - AI Motif`); }}>
+                    <button
+                        type="button"
+                        onClick={() => onPreview(aiSrc, `${drawing.userName} - AI Motif`)}
+                        style={{
+                            flex: 1, position: 'relative', overflow: 'hidden',
+                            border: 'none', padding: 0, background: 'transparent', cursor: 'pointer'
+                        }}
+                    >
                         <img src={aiSrc} alt="motif" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                         <div style={{ position: 'absolute', bottom: 6, right: 6, fontSize: 10, background: 'rgba(0, 229, 255, 0.2)', padding: '2px 6px', borderRadius: 4, color: THEME.primary }}>AI Motif</div>
-                    </div>
+                    </button>
                 ) : (
                     <div style={{
                         flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
@@ -424,11 +440,11 @@ export default function AdminPage() {
     const serverUrl = window.location.origin;
 
     // Toast Function
-    const addToast = (msg, type = 'info') => {
+    const addToast = useCallback((msg, type = 'info') => {
         const id = Date.now() + Math.random();
         setToasts(p => [...p, { id, msg, type }]);
         setTimeout(() => setToasts(p => p.filter(t => t.id !== id)), 4000);
-    };
+    }, []);
 
     // Socket bağlantısı
     useEffect(() => {
@@ -511,7 +527,7 @@ export default function AdminPage() {
         });
 
         return () => socket.close();
-    }, []);
+    }, [addToast]);
 
     const handleAuth = (inputPin, callback) => {
         pinRef.current = inputPin;
@@ -538,15 +554,24 @@ export default function AdminPage() {
     // Aksiyonlar
     const deleteSelected = () => {
         if (selected.size === 0) return;
+        const isDeleteAll = selected.size === drawings.length && drawings.length > 0;
         setConfirmDialog({
             isOpen: true, title: 'Seçilenleri Sil',
-            message: `${selected.size} adet çizimi kalıcı olarak silmek istediğinize emin misiniz?`,
+            message: isDeleteAll
+                ? 'Tüm çizimleri silmek istediğinize emin misiniz? Bu işlem oturum olarak arşivlenir.'
+                : `${selected.size} adet çizimi kalıcı olarak silmek istediğinize emin misiniz?`,
             dangerous: true,
             onConfirm: () => {
-                selected.forEach(id => socketRef.current?.emit('admin:delete-drawing', { id, pin: pinRef.current }));
+                if (isDeleteAll) {
+                    socketRef.current?.emit('admin:delete-all', { pin: pinRef.current });
+                } else {
+                    selected.forEach((id) => {
+                        socketRef.current?.emit('admin:delete-drawing', { id, pin: pinRef.current });
+                    });
+                }
                 setSelected(new Set());
                 setConfirmDialog({ isOpen: false });
-                addToast(`${selected.size} çizim silindi.`, 'success');
+                addToast(isDeleteAll ? 'Tüm çizimler silindi.' : `${selected.size} çizim silindi.`, 'success');
             },
             onCancel: () => setConfirmDialog({ isOpen: false })
         });
@@ -554,7 +579,9 @@ export default function AdminPage() {
 
     const retryAISelected = () => {
         if (selected.size === 0) return;
-        selected.forEach(id => socketRef.current?.emit('admin:retry-ai', { id, pin: pinRef.current }));
+        selected.forEach((id) => {
+            socketRef.current?.emit('admin:retry-ai', { id, pin: pinRef.current });
+        });
         setSelected(new Set());
         addToast(`${selected.size} çizim için AI yeniden başlatıldı.`, 'info');
     };
@@ -652,6 +679,10 @@ export default function AdminPage() {
                 @keyframes spin { 100% { transform: rotate(360deg); } }
                 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 
+                .stat-card:hover {
+                    transform: translateY(-4px);
+                }
+
                 /* 📱 Responsive */
                 @media (max-width: 1024px) {
                     .admin-sidebar { width: 220px !important; padding: 24px 14px !important; }
@@ -702,7 +733,7 @@ export default function AdminPage() {
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1 }}>
                     {menuItems.map(item => (
-                        <button key={item.id} onClick={() => {
+                        <button type="button" key={item.id} onClick={() => {
                             setActiveMenu(item.id);
                             const pin = pinRef.current;
                             const socket = socketRef.current;
@@ -747,7 +778,7 @@ export default function AdminPage() {
                 </div>
 
                 <div style={{ paddingTop: 24, borderTop: `1px solid ${THEME.border}` }}>
-                    <button onClick={logout} style={{
+                    <button type="button" onClick={logout} style={{
                         display: 'flex', alignItems: 'center', gap: 12, width: '100%',
                         padding: '14px 16px', borderRadius: 12, border: 'none',
                         background: 'transparent', color: THEME.textMuted,
@@ -769,7 +800,7 @@ export default function AdminPage() {
                         <h2 style={{ fontSize: 28, fontWeight: 800, letterSpacing: -1 }}>
                             {menuItems.find(m => m.id === activeMenu)?.label}
                         </h2>
-                        <a href="/galeri" target="_blank" style={{
+                        <a href="/galeri" target="_blank" rel="noreferrer" style={{
                             padding: '10px 20px', borderRadius: 12,
                             background: THEME.surface, color: THEME.text,
                             fontSize: 13, fontWeight: 600, textDecoration: 'none',
@@ -822,7 +853,7 @@ export default function AdminPage() {
                                     ) : (
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                                             {stats.leaderboard.slice(0, 5).map((u, i) => (
-                                                <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: i !== 4 ? `1px solid ${THEME.border}` : 'none' }}>
+                                                <div key={u.userName} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: i !== 4 ? `1px solid ${THEME.border}` : 'none' }}>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                                                         <div style={{ color: i === 0 ? '#FFD700' : i === 1 ? '#C0C0C0' : i === 2 ? '#CD7F32' : THEME.textMuted, fontWeight: 800, fontSize: 16 }}>#{i + 1}</div>
                                                         <div style={{ fontSize: 14, fontWeight: 500 }}>{u.userName}</div>
@@ -861,7 +892,7 @@ export default function AdminPage() {
                                 {/* Hızlı Aksiyonlar */}
                                 <div style={{ ...THEME.glass, borderRadius: 24, padding: 24, display: 'flex', flexDirection: 'column', gap: 12 }}>
                                     <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>⚡ Hızlı Aksiyonlar</div>
-                                    <button onClick={() => {
+                                    <button type="button" onClick={() => {
                                         socketRef.current?.emit('admin:retry-all-failed', { pin: pinRef.current });
                                         addToast('Başarısız motifler yeniden deneniyor...', 'info');
                                     }} style={{
@@ -877,7 +908,7 @@ export default function AdminPage() {
                                             <div style={{ fontSize: 11, color: THEME.textMuted, marginTop: 2 }}>{drawings.filter(d => d.aiStatus === 'failed').length} motif bekliyor</div>
                                         </div>
                                     </button>
-                                    <button onClick={() => setShowQR(!showQR)} style={{
+                                    <button type="button" onClick={() => setShowQR(!showQR)} style={{
                                         padding: '14px 16px', borderRadius: 12, border: 'none',
                                         background: showQR ? 'rgba(0,230,118,0.15)' : 'rgba(0,230,118,0.08)', color: THEME.success,
                                         fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
@@ -941,7 +972,7 @@ export default function AdminPage() {
                                             const colors = { drawing: THEME.primary, 'ai-success': THEME.success, 'ai-failed': THEME.danger, admin: '#a29bfe' };
                                             const icons = { drawing: '🎨', 'ai-success': '✨', 'ai-failed': '⚠️', admin: '🔧' };
                                             return (
-                                                <div key={i} style={{
+                                                <div key={`${a.timestamp}-${a.type}-${a.message}`} style={{
                                                     display: 'flex', alignItems: 'center', gap: 12,
                                                     padding: '10px 14px', borderRadius: 10,
                                                     background: i === 0 ? 'rgba(0,229,255,0.04)' : 'transparent',
@@ -970,7 +1001,7 @@ export default function AdminPage() {
                             {/* Toolbar */}
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                                    <button onClick={selectAll} style={{
+                                    <button type="button" onClick={selectAll} style={{
                                         padding: '10px 16px', borderRadius: 10, border: THEME.glass.border,
                                         background: THEME.surface, color: THEME.text, fontSize: 13, fontWeight: 600,
                                         cursor: 'pointer', fontFamily: 'inherit', transition: 'background 0.2s'
@@ -1011,11 +1042,11 @@ export default function AdminPage() {
                                 </div>
                                 <div style={{ width: 1, height: 24, background: THEME.borderLight }} />
                                 <div style={{ display: 'flex', gap: 10 }}>
-                                    <button onClick={retryAISelected} style={{
+                                    <button type="button" onClick={retryAISelected} style={{
                                         padding: '8px 16px', borderRadius: 8, border: 'none', background: 'rgba(0,229,255,0.1)',
                                         color: THEME.primary, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit'
                                     }}>🔄 AI Yenile</button>
-                                    <button onClick={() => {
+                                    <button type="button" onClick={() => {
                                         if (selected.size === 1) {
                                             const id = Array.from(selected)[0];
                                             window.location.href = `${serverUrl}/api/motifs/${id}/download`;
@@ -1026,7 +1057,7 @@ export default function AdminPage() {
                                         padding: '8px 16px', borderRadius: 8, border: 'none', background: THEME.surfaceHover,
                                         color: THEME.text, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit'
                                     }}>📥 İndir</button>
-                                    <button onClick={deleteSelected} style={{
+                                    <button type="button" onClick={deleteSelected} style={{
                                         padding: '8px 16px', borderRadius: 8, border: 'none', background: 'rgba(255,61,0,0.1)',
                                         color: THEME.danger, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit'
                                     }}>🗑️ Sil</button>
@@ -1060,7 +1091,7 @@ export default function AdminPage() {
                                             color: THEME.text, fontSize: 14, fontFamily: 'inherit', outline: 'none'
                                         }}
                                     />
-                                    <button onClick={() => {
+                                    <button type="button" onClick={() => {
                                         socketRef.current?.emit('admin:create-event', {
                                             pin: pinRef.current, name: newEventName, location: newEventLocation
                                         });
@@ -1114,8 +1145,8 @@ export default function AdminPage() {
                                                             { label: 'AI Başarılı', value: evt.stats?.aiSuccessCount || 0, icon: '✨' },
                                                             { label: 'Katılımcı', value: evt.stats?.uniqueUsers || 0, icon: '👥' },
                                                             { label: 'Süre', value: duration, icon: '⏱️' }
-                                                        ].map((s, i) => (
-                                                            <div key={i} style={{ background: THEME.surface, padding: '10px 12px', borderRadius: 10, textAlign: 'center' }}>
+                                                        ].map((s) => (
+                                                            <div key={s.label} style={{ background: THEME.surface, padding: '10px 12px', borderRadius: 10, textAlign: 'center' }}>
                                                                 <div style={{ fontSize: 14 }}>{s.icon}</div>
                                                                 <div style={{ fontSize: 16, fontWeight: 800, marginTop: 2 }}>{s.value}</div>
                                                                 <div style={{ fontSize: 10, color: THEME.textMuted }}>{s.label}</div>
@@ -1127,14 +1158,14 @@ export default function AdminPage() {
                                                 {/* Aksiyonlar */}
                                                 <div style={{ display: 'flex', gap: 8 }}>
                                                     {(evt.status === 'draft' || evt.status === 'paused') && (
-                                                        <button onClick={() => socketRef.current?.emit('admin:start-event', { pin: pinRef.current, eventId: evt.id })} style={{
+                                                        <button type="button" onClick={() => socketRef.current?.emit('admin:start-event', { pin: pinRef.current, eventId: evt.id })} style={{
                                                             padding: '8px 16px', borderRadius: 8, border: 'none',
                                                             background: 'rgba(0,230,118,0.1)', color: THEME.success,
                                                             fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit'
                                                         }}>🚀 Başlat</button>
                                                     )}
                                                     {evt.status === 'active' && (
-                                                        <button onClick={() => {
+                                                        <button type="button" onClick={() => {
                                                             if (confirm(`"${evt.name}" etkinliğini bitirmek istediğinize emin misiniz?`)) {
                                                                 socketRef.current?.emit('admin:end-event', { pin: pinRef.current, eventId: evt.id });
                                                             }
@@ -1188,7 +1219,7 @@ export default function AdminPage() {
                                         <div style={{ fontSize: 15, fontWeight: 600 }}>AI Dönüşüm Motoru</div>
                                         <div style={{ fontSize: 13, color: THEME.textMuted, marginTop: 4 }}>Yeni çizimlerin otomatik motif generasyonu</div>
                                     </div>
-                                    <button onClick={toggleAI} style={{
+                                    <button type="button" onClick={toggleAI} style={{
                                         width: 52, height: 32, borderRadius: 16, border: 'none',
                                         background: aiEnabled ? THEME.success : 'rgba(255,255,255,0.1)',
                                         position: 'relative', cursor: 'pointer', transition: 'background 0.3s ease'
@@ -1211,7 +1242,7 @@ export default function AdminPage() {
                                     </h3>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                                         {[aiStatus.primary, aiStatus.fallback].filter(Boolean).map((s, i) => (
-                                            <div key={i} style={{ background: THEME.surface, padding: '16px 20px', borderRadius: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <div key={s.name || s.model || `svc-${i}`} style={{ background: THEME.surface, padding: '16px 20px', borderRadius: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                 <div>
                                                     <div style={{ fontSize: 14, fontWeight: 600 }}>{s.name}</div>
                                                     <div style={{ fontSize: 12, color: THEME.textMuted, marginTop: 2 }}>{s.model}</div>
@@ -1237,7 +1268,7 @@ export default function AdminPage() {
                                 {/* Preset Butonları */}
                                 <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
                                     {promptPresets.map(p => (
-                                        <button key={p.id} onClick={() => setPromptText(p.prompt)} style={{
+                                        <button type="button" key={p.id} onClick={() => setPromptText(p.prompt)} style={{
                                             padding: '10px 16px', borderRadius: 10, border: `1px solid ${THEME.border}`,
                                             background: promptText === p.prompt ? 'rgba(0,229,255,0.12)' : THEME.surface,
                                             color: promptText === p.prompt ? THEME.primary : THEME.text,
@@ -1268,7 +1299,7 @@ export default function AdminPage() {
                                         fontSize: 12,
                                         color: promptText.length > 3000 ? THEME.danger : THEME.textMuted
                                     }}>{promptText.length} / 3000 karakter</span>
-                                    <button onClick={() => {
+                                    <button type="button" onClick={() => {
                                         socketRef.current?.emit('admin:update-prompt', { pin: pinRef.current, prompt: promptText });
                                     }} style={{
                                         padding: '10px 24px', borderRadius: 10, border: 'none',
@@ -1287,7 +1318,7 @@ export default function AdminPage() {
                                 <h3 style={{ fontSize: 18, fontWeight: 700, color: THEME.danger, marginBottom: 8 }}>Danger Zone</h3>
                                 <p style={{ fontSize: 13, color: THEME.textMuted, marginBottom: 24 }}>Aşağıdaki işlemler geri alınamaz ve veri kaybına yol açar.</p>
 
-                                <button onClick={resetCarpet} style={{
+                                <button type="button" onClick={resetCarpet} style={{
                                     width: '100%', padding: '16px', borderRadius: 12, border: 'none',
                                     background: 'rgba(255,61,0,0.1)', color: THEME.danger,
                                     fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
@@ -1310,7 +1341,11 @@ export default function AdminPage() {
                                         <span>📋</span> Oturum Geçmişi
                                     </h3>
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
-                                        {sessionsData.slice().reverse().map((s, i) => (
+                                        {sessionsData.slice().reverse().map((s, i) => {
+                                            const downloadUrl = `${serverUrl}/api/sessions/${s.sessionId}/download`;
+                                            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(downloadUrl)}`;
+                                            const hasFiles = Array.isArray(s.files) && s.files.length > 0;
+                                            return (
                                             <div key={s.sessionId} style={{ ...THEME.glass, borderRadius: 20, padding: 24 }}>
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                                                     <div style={{ fontSize: 14, fontWeight: 700, color: THEME.primary }}>Oturum #{sessionsData.length - i}</div>
@@ -1332,8 +1367,24 @@ export default function AdminPage() {
                                                     <span style={{ background: 'rgba(0,230,118,0.1)', color: THEME.success, padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600 }}>✅ {s.aiSuccessCount} AI</span>
                                                     {s.aiFailedCount > 0 && <span style={{ background: 'rgba(255,61,0,0.1)', color: THEME.danger, padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600 }}>❌ {s.aiFailedCount} Başarısız</span>}
                                                 </div>
+                                                <div style={{ marginTop: 12, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                                                    {hasFiles ? (
+                                                        <>
+                                                            <a href={downloadUrl} style={{
+                                                                padding: '6px 10px', borderRadius: 8, border: 'none',
+                                                                background: THEME.surfaceHover, color: THEME.text, fontSize: 11,
+                                                                fontWeight: 600, textDecoration: 'none', fontFamily: 'inherit'
+                                                            }}>📥 Oturumu indir</a>
+                                                            <div style={{ width: 54, height: 54, background: '#fff', borderRadius: 8, padding: 4, boxSizing: 'border-box' }}>
+                                                                <img src={qrUrl} alt="Oturum QR" style={{ width: '100%', height: '100%', display: 'block' }} />
+                                                            </div>
+                                                        </>
+                                                    ) : (
+                                                        <span style={{ fontSize: 11, color: THEME.textMuted }}>Oturum dosyası yok</span>
+                                                    )}
+                                                </div>
                                             </div>
-                                        ))}
+                                        )})}
                                     </div>
                                 </div>
                             )}
@@ -1395,8 +1446,24 @@ export default function AdminPage() {
                                                     <span style={{ fontSize: 12, color: THEME.textMuted }}>{isSelected ? 'Seçili' : 'Seç'}</span>
                                                 </div>
                                                 <div style={{ display: 'flex', height: 120, background: '#000' }}>
-                                                    {archiveUrl && <img src={archiveUrl} alt="çizim" style={{ flex: 1, height: '100%', objectFit: 'cover', opacity: 0.6, cursor: 'pointer' }} onClick={() => setPreviewModal({ isOpen: true, src: archiveUrl, title: `${a.userName} - Orijinal (Arşiv)` })} />}
-                                                    {archiveAiUrl && <img src={archiveAiUrl} alt="motif" style={{ flex: 1, height: '100%', objectFit: 'cover', opacity: 0.6, cursor: 'pointer' }} onClick={() => setPreviewModal({ isOpen: true, src: archiveAiUrl, title: `${a.userName} - AI Motif (Arşiv)` })} />}
+                                                    {archiveUrl && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setPreviewModal({ isOpen: true, src: archiveUrl, title: `${a.userName} - Orijinal (Arşiv)` })}
+                                                            style={{ flex: 1, height: '100%', border: 'none', padding: 0, background: 'transparent', cursor: 'pointer' }}
+                                                        >
+                                                            <img src={archiveUrl} alt="çizim" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.6 }} />
+                                                        </button>
+                                                    )}
+                                                    {archiveAiUrl && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setPreviewModal({ isOpen: true, src: archiveAiUrl, title: `${a.userName} - AI Motif (Arşiv)` })}
+                                                            style={{ flex: 1, height: '100%', border: 'none', padding: 0, background: 'transparent', cursor: 'pointer' }}
+                                                        >
+                                                            <img src={archiveAiUrl} alt="motif" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.6 }} />
+                                                        </button>
+                                                    )}
                                                     {!archiveUrl && !archiveAiUrl && <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: THEME.textMuted, fontSize: 12 }}>Dosya yok</div>}
                                                 </div>
                                                 <div style={{ padding: '14px 16px' }}>
@@ -1409,12 +1476,12 @@ export default function AdminPage() {
                                                         {a.deleteReason === 'session-reset' && ' (Oturum sıfırlaması)'}
                                                     </div>
                                                     <div style={{ display: 'flex', gap: 8 }}>
-                                                        <button onClick={() => { socketRef.current?.emit('admin:restore-drawing', { id: a.id, pin: pinRef.current }); addToast(`"${a.userName}" geri yüklendi.`, 'success'); }} style={{
+                                                        <button type="button" onClick={() => { socketRef.current?.emit('admin:restore-drawing', { id: a.id, pin: pinRef.current }); addToast(`"${a.userName}" geri yüklendi.`, 'success'); }} style={{
                                                             flex: 1, padding: '8px', borderRadius: 8, border: 'none',
                                                             background: 'rgba(0,229,255,0.1)', color: THEME.primary,
                                                             fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit'
                                                         }}>🔄 Geri Yükle</button>
-                                                        <button onClick={() => setConfirmDialog({
+                                                        <button type="button" onClick={() => setConfirmDialog({
                                                             isOpen: true, title: 'Kalıcı Sil', message: 'Bu çizimi arşivden de kalıcı olarak silmek istediğinize emin misiniz?', dangerous: true,
                                                             onConfirm: () => { socketRef.current?.emit('admin:hard-delete', { id: a.id, pin: pinRef.current }); setConfirmDialog({ isOpen: false }); addToast('Kalıcı olarak silindi.', 'error'); },
                                                             onCancel: () => setConfirmDialog({ isOpen: false })
