@@ -564,6 +564,17 @@ io.on('connection', (socket) => {
       saveData();
 
       console.log(`🔄 ${drawings.length} çizim yeniden yerleştirildi.`);
+
+      // 🎉 Max düşürüldüyse ve mevcut çizimler yeterli mi?
+      if (drawings.length >= MAX_DRAWINGS) {
+        console.log('🎉 Max düşürüldü — halı tamamlandı! Kutlama gönderiliyor...');
+        setTimeout(() => {
+          io.emit('carpet-complete', { total: MAX_DRAWINGS });
+          setTimeout(() => {
+            io.emit('celebration-replay', { drawings });
+          }, 2000);
+        }, 1500);
+      }
     }
   });
 
