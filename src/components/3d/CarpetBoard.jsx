@@ -565,24 +565,20 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children, onCarpetCanva
         ctx.save();
         const fontSize = Math.max(32, Math.min(48, width * 0.15));
         ctx.font = `700 ${fontSize}px "Georgia", "Times New Roman", serif`;
-        ctx.fillStyle = 'rgba(60, 30, 10, 0.65)';
         ctx.textAlign = 'right';
         ctx.textBaseline = 'bottom';
-        const padding = Math.max(3, width * 0.02);
-        ctx.fillText(name, x + width - padding, y + height - padding);
-        // İplik dokusu efekti (ismin üzerinden yatay çizgiler)
+        const padding = Math.max(6, width * 0.03);
         const textMetrics = ctx.measureText(name);
-        const textX = x + width - padding - textMetrics.width;
-        const textY = y + height - padding - fontSize;
-        ctx.globalAlpha = 0.12;
-        ctx.strokeStyle = 'rgba(80,50,20,0.4)';
-        ctx.lineWidth = 0.4;
-        for (let ty = textY; ty < y + height - padding; ty += 2) {
-            ctx.beginPath();
-            ctx.moveTo(textX - 2, ty);
-            ctx.lineTo(textX + textMetrics.width + 2, ty);
-            ctx.stroke();
-        }
+        const textW = textMetrics.width + padding * 2;
+        const textH = fontSize + padding;
+        const bgX = x + width - padding - textMetrics.width - padding;
+        const bgY = y + height - padding - fontSize - padding * 0.5;
+        // Yarı saydam koyu arka plan
+        ctx.fillStyle = 'rgba(30, 15, 5, 0.55)';
+        ctx.fillRect(bgX, bgY, textW, textH + padding * 0.5);
+        // Açık renkli isim (kontrast)
+        ctx.fillStyle = 'rgba(255, 245, 225, 0.95)';
+        ctx.fillText(name, x + width - padding, y + height - padding);
         ctx.restore();
     }, []);
 
