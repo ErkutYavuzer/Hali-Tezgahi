@@ -563,19 +563,26 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children, onCarpetCanva
     const renderWovenName = useCallback((ctx, name, x, y, width, height) => {
         if (!name || name === 'Anonim') return;
         ctx.save();
-        const fontSize = Math.max(32, Math.min(48, width * 0.15));
-        ctx.font = `700 ${fontSize}px "Georgia", "Times New Roman", serif`;
+        const fontSize = Math.max(10, Math.min(16, width * 0.06));
+        ctx.font = `600 ${fontSize}px "Georgia", "Times New Roman", serif`;
+        ctx.fillStyle = 'rgba(60, 30, 10, 0.65)';
         ctx.textAlign = 'right';
         ctx.textBaseline = 'bottom';
-        const padding = Math.max(6, width * 0.03);
-        // Koyu kontur (outline) — her arka plan üzerinde okunur
-        ctx.strokeStyle = 'rgba(20, 10, 0, 0.9)';
-        ctx.lineWidth = fontSize * 0.15;
-        ctx.lineJoin = 'round';
-        ctx.strokeText(name, x + width - padding, y + height - padding);
-        // Beyaz dolgu — yüksek kontrast
-        ctx.fillStyle = '#ffffff';
+        const padding = Math.max(3, width * 0.02);
         ctx.fillText(name, x + width - padding, y + height - padding);
+        // İplik dokusu efekti (ismin üzerinden yatay çizgiler)
+        const textMetrics = ctx.measureText(name);
+        const textX = x + width - padding - textMetrics.width;
+        const textY = y + height - padding - fontSize;
+        ctx.globalAlpha = 0.12;
+        ctx.strokeStyle = 'rgba(80,50,20,0.4)';
+        ctx.lineWidth = 0.4;
+        for (let ty = textY; ty < y + height - padding; ty += 2) {
+            ctx.beginPath();
+            ctx.moveTo(textX - 2, ty);
+            ctx.lineTo(textX + textMetrics.width + 2, ty);
+            ctx.stroke();
+        }
         ctx.restore();
     }, []);
 
@@ -782,8 +789,13 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children, onCarpetCanva
             pendingEnhancementsRef.current[drawingId] = setTimeout(() => {
                 const ctx = offscreenCtxRef.current;
                 if (ctx) {
-                    // İsim yazma KALDIRILDI — AI motif geldiğinde morphToAIMotif içinde yazılacak
-                    // Böylece çift isim sorunu ortadan kalkar
+                    // Enhancement kaldırıldı — AI dönüşümü yapacak
+                    // Sadece isim yaz
+                    try {
+                        renderWovenName(ctx, drawing.userName, drawing.x, drawing.y, drawing.width, drawing.height);
+                    } catch (nameErr) {
+                        console.warn('⚠️ İsim yazma hatası:', nameErr.message);
+                    }
                     needsUpdateRef.current = true;
                     // console.log(`🎨 İsim eklendi: ${drawing.userName} (${drawingId.substring(0, 15)})`);
                 }
@@ -864,7 +876,7 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children, onCarpetCanva
         aiImg.onload = () => {
             try {
                 // Sadece çizim alanını temizle — yanındaki motiflere DOKUNMA
-                const pad = 10; // Stroke outline temizliği için yeterli marj
+                const pad = 2; // Minimal padding (sadece anti-alias artıkları için)
                 const clearX = Math.max(0, x - pad);
                 const clearY = Math.max(0, y - pad);
                 const clearW = Math.min(canvas.width - clearX, width + pad * 2);
