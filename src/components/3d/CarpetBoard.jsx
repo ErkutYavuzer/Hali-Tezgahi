@@ -563,8 +563,8 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children, onCarpetCanva
     const renderWovenName = useCallback((ctx, name, x, y, width, height) => {
         if (!name || name === 'Anonim') return;
         ctx.save();
-        const fontSize = Math.max(10, Math.min(16, width * 0.06));
-        ctx.font = `600 ${fontSize}px "Georgia", "Times New Roman", serif`;
+        const fontSize = Math.max(16, Math.min(24, width * 0.09));
+        ctx.font = `700 ${fontSize}px "Georgia", "Times New Roman", serif`;
         ctx.fillStyle = 'rgba(60, 30, 10, 0.65)';
         ctx.textAlign = 'right';
         ctx.textBaseline = 'bottom';
