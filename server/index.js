@@ -1330,8 +1330,21 @@ io.on('connection', (socket) => {
   });
 });
 
+// 📸 Halı görüntüsü upload endpoint'i (HTTP POST)
+app.post('/api/carpet-image-upload', express.raw({ type: 'image/*', limit: '10mb' }), (req, res) => {
+  try {
+    const imgPath = path.join(__dirname, 'carpet_latest.png');
+    fs.writeFileSync(imgPath, req.body);
+    lastCarpetImageAt = Date.now();
+    console.log(`📸 Halı snapshot kaydedildi! (${(req.body.length / 1024).toFixed(0)} KB)`);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 📥 Halı görüntüsü indirme endpoint'i
-app.get('/carpet-image', (req, res) => {
+app.get('/api/carpet-image', (req, res) => {
   const imgPath = path.join(__dirname, 'carpet_latest.png');
   if (fs.existsSync(imgPath)) {
     res.setHeader('Content-Type', 'image/png');

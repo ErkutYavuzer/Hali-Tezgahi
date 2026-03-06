@@ -87,18 +87,22 @@ function BreathingCarpet({ socket, onCarpetCanvasReady }) {
       <group ref={innerRef} rotation={[Math.PI / 2, 0, 0]}>
         <CarpetBoard socket={socket} carpetWidth={carpetWidth} carpetDepth={carpetDepth} onCarpetCanvasReady={onCarpetCanvasReady}
           onCelebrationDone={() => {
-            console.log('🎉 Kutlama animasyonu tamamlandı — video kaydı durduruluyor...');
-            // 2 sn ekstra bekle (son kare)
-            setTimeout(async () => {
-              // Video kaydını durdur
-              const recorder = mediaRecorderRef.current;
-              if (recorder && recorder.state !== 'inactive') {
-                recorder.stop();
-                // Kaydet ve yükle
-                await new Promise(resolve => {
+            console.log('🎉 Kutlama animasyonu tamamlandı!');
+
+            // ✅ QR kodu HEMEN göster
+            const origin = window.location.origin;
+            const downloadUrl = `${origin}/?role=download`;
+            const qr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(downloadUrl)}`;
+            setDownloadQrUrl(qr);
+            setShowCelebration(true);
+
+            // 🎥 Video arka planda durdur/yükle
+            setTimeout(() => {
+              try {
+                const recorder = mediaRecorderRef.current;
+                if (recorder && recorder.state !== 'inactive') {
                   recorder.onstop = async () => {
                     const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
-                    console.log(`🎥 Video hazır: ${(blob.size / 1024 / 1024).toFixed(1)} MB`);
                     try {
                       const socketUrl = window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')
                         ? `http://${window.location.hostname}:3003`
@@ -108,21 +112,12 @@ function BreathingCarpet({ socket, onCarpetCanvasReady }) {
                         headers: { 'Content-Type': 'video/webm' },
                         body: blob,
                       });
-                      console.log('✅ Video sunucuya yüklendi!');
-                    } catch (err) {
-                      console.error('❌ Video yükleme hatası:', err.message);
-                    }
-                    resolve();
+                    } catch (err) { console.warn('Video yükleme hatası:', err.message); }
                   };
-                });
-              }
-              // QR kodu oluştur (video download URL)
-              const origin = window.location.origin;
-              const downloadUrl = `${origin}/?role=download`;
-              const qr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(downloadUrl)}`;
-              setDownloadQrUrl(qr);
-              setShowCelebration(true);
-            }, 2000);
+                  recorder.stop();
+                }
+              } catch (err) { console.warn('Recorder hatası:', err.message); }
+            }, 500);
           }}>
           <CarpetBorder width={carpetWidth} depth={carpetDepth} />
           <CarpetFringes width={carpetWidth} depth={carpetDepth} />
@@ -809,7 +804,7 @@ export default function HostPage() {
                 <div style={{
                   marginTop: 12, fontSize: 14, fontWeight: 700,
                   color: '#333', letterSpacing: 1,
-                }}>📱 QR İLE VİDEOYU İNDİR</div>
+                }}>📱 QR İLE ESERİ İNDİR</div>
               </div>
             )}
 
@@ -831,7 +826,7 @@ export default function HostPage() {
                 boxShadow: '0 4px 20px rgba(78,205,196,0.4)',
                 transition: 'all 0.3s', letterSpacing: 1,
               }}>
-                🎬 VİDEOYU İNDİR
+                🎨 ESERİ İNDİR
               </button>
 
               {/* Kapat Butonu */}

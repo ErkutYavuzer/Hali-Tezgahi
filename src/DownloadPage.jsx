@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { io } from 'socket.io-client';
 
 export default function DownloadPage() {
     const [videoUrl, setVideoUrl] = useState('');
@@ -41,21 +40,19 @@ export default function DownloadPage() {
         checkVideo();
 
         function loadImage(baseUrl) {
-            const socket = io(baseUrl, { transports: ['polling', 'websocket'], upgrade: true });
-            socket.on('connect', () => { socket.emit('request-carpet-image'); });
-            socket.on('carpet-image-data', (dataUrl) => {
-                if (dataUrl) {
-                    setImageUrl(dataUrl);
-                } else {
+            fetch(`${baseUrl}/api/carpet-image`)
+                .then(res => {
+                    if (res.ok) return res.blob();
+                    throw new Error('Resim yok');
+                })
+                .then(blob => {
+                    setImageUrl(URL.createObjectURL(blob));
+                    setLoading(false);
+                })
+                .catch(() => {
                     setError('Henüz halı görüntüsü yok');
-                }
-                setLoading(false);
-                socket.close();
-            });
-            socket.on('connect_error', () => {
-                setError('Sunucuya bağlanılamıyor');
-                setLoading(false);
-            });
+                    setLoading(false);
+                });
         }
     }, []);
 
