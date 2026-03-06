@@ -950,8 +950,12 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children, onCarpetCanva
         if (!socket) return;
 
         socket.on('initial-carpet', ({ drawings }) => {
+            // 🚫 Kutlama sırasında initial-carpet'ı engelle
+            if (celebrationModeRef.current) {
+                console.log('🚫 Kutlama modu — initial-carpet atlanıyor');
+                return;
+            }
             // console.log(`📦 initial-carpet geldi: ${drawings?.length || 0} çizim`);
-            // console.log(`📦 ctx durumu: ${!!offscreenCtxRef.current}, textureRef: ${!!textureRef.current}`);
             const resolvedDrawings = (drawings || []).map((d) => {
                 const dataUrl = d.dataUrl || (d.drawingFile ? `${window.location.origin}/motifs/${d.drawingFile}` : null);
                 const aiDataUrl = d.aiDataUrl || (d.aiFile ? `${window.location.origin}/motifs/${d.aiFile}` : null);
@@ -1062,6 +1066,16 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children, onCarpetCanva
             if (!ctx) return;
             const canvas = offscreenCanvasRef.current;
 
+            // 🚫 Kutlama modu — initial-carpet'ı engelle
+            celebrationModeRef.current = true;
+
+            // 🧹 Mevcut uçan parçacıkları temizle
+            flyingQueueRef.current = [];
+
+            // 🧹 Bekleyen enhancement timer'larını iptal et
+            Object.values(pendingEnhancementsRef.current).forEach(t => clearTimeout(t));
+            pendingEnhancementsRef.current = {};
+
             // Canvas'ı temizle
             ctx.fillStyle = '#f0e4d0';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -1083,24 +1097,26 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children, onCarpetCanva
                 return { ...d, dataUrl, aiDataUrl };
             });
 
-            // Her motifi kademeli olarak uçurarak getir
-            const STAGGER_MS = 50; // Her motif arası gecikme (hızlı)
-            resolvedDrawings.forEach((drawing, i) => {
-                setTimeout(() => {
-                    // AI motif varsa onu uçur, yoksa orijinal çizimi
-                    const srcUrl = drawing.aiDataUrl || drawing.dataUrl;
-                    if (srcUrl) {
-                        launchFlyingPixels({ ...drawing, dataUrl: srcUrl });
-                    }
-                }, i * STAGGER_MS);
-            });
-
-            // Tüm animasyonlar bittikten sonra callback
-            const totalFlyTime = resolvedDrawings.length * STAGGER_MS + 8000; // stagger + uçuş süresi
+            // ⏳ 500ms bekle — halı boş görünsün, sonra motifler uçarak gelsin
             setTimeout(() => {
-                console.log('🎉 Kutlama replay tamamlandı!');
-                if (onCelebrationDone) onCelebrationDone();
-            }, totalFlyTime);
+                const STAGGER_MS = 80;
+                resolvedDrawings.forEach((drawing, i) => {
+                    setTimeout(() => {
+                        const srcUrl = drawing.aiDataUrl || drawing.dataUrl;
+                        if (srcUrl) {
+                            launchFlyingPixels({ ...drawing, dataUrl: srcUrl });
+                        }
+                    }, i * STAGGER_MS);
+                });
+
+                // Tüm animasyonlar bittikten sonra callback
+                const totalFlyTime = resolvedDrawings.length * STAGGER_MS + 8000;
+                setTimeout(() => {
+                    console.log('🎉 Kutlama replay tamamlandı!');
+                    celebrationModeRef.current = false;
+                    if (onCelebrationDone) onCelebrationDone();
+                }, totalFlyTime);
+            }, 500);
         });
 
         return () => {
