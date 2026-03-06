@@ -1084,7 +1084,7 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children, onCarpetCanva
             });
 
             // Her motifi kademeli olarak uçurarak getir
-            const STAGGER_MS = 150; // Her motif arası gecikme
+            const STAGGER_MS = 50; // Her motif arası gecikme (hızlı)
             resolvedDrawings.forEach((drawing, i) => {
                 setTimeout(() => {
                     // AI motif varsa onu uçur, yoksa orijinal çizimi
@@ -1096,7 +1096,7 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children, onCarpetCanva
             });
 
             // Tüm animasyonlar bittikten sonra callback
-            const totalFlyTime = resolvedDrawings.length * STAGGER_MS + 5000; // stagger + uçuş süresi
+            const totalFlyTime = resolvedDrawings.length * STAGGER_MS + 3000; // stagger + uçuş süresi
             setTimeout(() => {
                 console.log('🎉 Kutlama replay tamamlandı!');
                 if (onCelebrationDone) onCelebrationDone();

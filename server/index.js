@@ -561,23 +561,28 @@ io.on('connection', (socket) => {
         return { ...d, ...placement };
       });
 
-      // Tüm client'lara güncel halıyı gönder (sıfırla + yeniden çiz)
-      io.emit('carpet-reset');
-      io.emit('initial-carpet', { drawings });
+      // 🎉 Max düşürüldüyse ve mevcut çizimler yeterli mi?
+      const willCelebrate = drawings.length >= MAX_DRAWINGS;
+
+      if (!willCelebrate) {
+        // Normal güncelleme — çizimleri yeniden yerleştir
+        io.emit('carpet-reset');
+        io.emit('initial-carpet', { drawings });
+      }
+
       io.emit('drawing-count', drawings.length);
       saveData();
-
       console.log(`🔄 ${drawings.length} çizim yeniden yerleştirildi.`);
 
-      // 🎉 Max düşürüldüyse ve mevcut çizimler yeterli mi?
-      if (drawings.length >= MAX_DRAWINGS) {
+      if (willCelebrate) {
         console.log('🎉 Max düşürüldü — halı tamamlandı! Kutlama gönderiliyor...');
         setTimeout(() => {
           io.emit('carpet-complete', { total: MAX_DRAWINGS });
+          // 500ms sonra celebration replay başlat (hızlı)
           setTimeout(() => {
             io.emit('celebration-replay', { drawings });
-          }, 2000);
-        }, 1500);
+          }, 500);
+        }, 500);
       }
     }
   });
@@ -644,10 +649,10 @@ io.on('connection', (socket) => {
       console.log('🎉 Halı tamamlandı! Kutlama gönderiliyor...');
       setTimeout(() => {
         io.emit('carpet-complete', { total: MAX_DRAWINGS });
-        // 2 saniye sonra celebration replay başlat
+        // 500ms sonra celebration replay başlat
         setTimeout(() => {
           io.emit('celebration-replay', { drawings });
-        }, 2000);
+        }, 500);
       }, 500);
     }
 
