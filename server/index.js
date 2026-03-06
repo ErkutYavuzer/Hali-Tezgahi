@@ -261,6 +261,10 @@ function loadData() {
         drawings = data.drawings;
         console.log(`💾 ${drawings.length} çizim yüklendi.`);
       }
+      if (data.maxDrawings && data.maxDrawings >= 12 && data.maxDrawings <= 60) {
+        MAX_DRAWINGS = data.maxDrawings;
+        console.log(`💾 Max dokumacı sayısı: ${MAX_DRAWINGS}`);
+      }
     } catch (e) {
       console.error('Veri yükleme hatası:', e);
     }
@@ -302,7 +306,7 @@ function saveData() {
         rotation: d.rotation,
         timestamp: d.timestamp,
       }));
-      fs.writeFileSync(DATA_FILE, JSON.stringify({ drawings: lightDrawings }));
+      fs.writeFileSync(DATA_FILE, JSON.stringify({ drawings: lightDrawings, maxDrawings: MAX_DRAWINGS }));
     } catch (e) {
       console.error('Veri kaydetme hatası:', e);
     }
@@ -461,7 +465,7 @@ function getGridLayout(maxDrawings) {
     const cellW = (TEX_W - PAD * 2) / cols;
     const cellH = (TEX_H - PAD * 2) / rows;
     const cellAspect = cellW / cellH;
-    const waste = Math.abs(cellAspect - 1.0) + Math.abs(cols * rows - maxDrawings) * 0.01;
+    const waste = Math.abs(cellAspect - 1.0) + Math.abs(cols * rows - maxDrawings) * 0.5;
     if (waste < bestWaste) {
       bestWaste = waste;
       bestCols = cols;
