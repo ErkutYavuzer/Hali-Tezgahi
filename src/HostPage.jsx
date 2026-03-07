@@ -259,8 +259,35 @@ export default function HostPage() {
         console.warn('🎥 MediaRecorder başlatılamadı:', err.message);
       }
 
-      // ✅ QR + celebration overlay 3 saniye sonra göster (animasyon başlasın)
+      // ✅ QR + celebration overlay 32 saniye sonra göster + halı snapshot kaydet
       setTimeout(() => {
+        // 📸 Önce 3D canvas'ın ekran görüntüsünü kaydet (halı tam görünüyor)
+        try {
+          const threeCanvas = document.querySelector('canvas');
+          if (threeCanvas) {
+            const scale = 1200 / threeCanvas.width;
+            const tmpCanvas = document.createElement('canvas');
+            tmpCanvas.width = 1200;
+            tmpCanvas.height = Math.round(threeCanvas.height * scale);
+            const tmpCtx = tmpCanvas.getContext('2d');
+            tmpCtx.drawImage(threeCanvas, 0, 0, tmpCanvas.width, tmpCanvas.height);
+            tmpCanvas.toBlob((blob) => {
+              if (blob) {
+                const socketUrl = window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')
+                  ? `http://${window.location.hostname}:3003`
+                  : window.location.origin;
+                fetch(`${socketUrl}/api/carpet-image-upload`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'image/png' },
+                  body: blob,
+                }).then(() => console.log('📸 Halı snapshot kaydedildi!'))
+                  .catch(e => console.warn('📸 Upload hatası:', e.message));
+              }
+            }, 'image/png');
+          }
+        } catch (e) { console.warn('📸 Snapshot hatası:', e.message); }
+
+        // QR göster
         const origin = window.location.origin;
         const downloadUrl = `${origin}/?role=download`;
         const qr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(downloadUrl)}`;
