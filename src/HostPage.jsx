@@ -259,12 +259,14 @@ export default function HostPage() {
         console.warn('🎥 MediaRecorder başlatılamadı:', err.message);
       }
 
-      // ✅ QR + celebration overlay HEMEN göster
-      const origin = window.location.origin;
-      const downloadUrl = `${origin}/?role=download`;
-      const qr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(downloadUrl)}`;
-      setDownloadQrUrl(qr);
-      setShowCelebration(true);
+      // ✅ QR + celebration overlay 3 saniye sonra göster (animasyon başlasın)
+      setTimeout(() => {
+        const origin = window.location.origin;
+        const downloadUrl = `${origin}/?role=download`;
+        const qr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(downloadUrl)}`;
+        setDownloadQrUrl(qr);
+        setShowCelebration(true);
+      }, 3000);
     });
 
     // 📸 Admin'den snapshot talebi
