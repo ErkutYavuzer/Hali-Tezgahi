@@ -1118,10 +1118,36 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children, onCarpetCanva
                     if (onCelebrationDone) onCelebrationDone();
                 }, qrShowTime);
 
-                // 🎬 Animasyon bitince celebration mode'u kapat
+                // 🎬 Animasyon bitince celebration mode'u kapat + halı snapshot kaydet
                 setTimeout(() => {
                     console.log('🎉 Kutlama replay tamamlandı!');
                     celebrationModeRef.current = false;
+
+                    // 📸 Offscreen carpet canvas'ı HTTP POST ile kaydet
+                    try {
+                        const canvasEl = offscreenCanvasRef.current;
+                        if (canvasEl) {
+                            const scale = 1200 / canvasEl.width;
+                            const tmpCanvas = document.createElement('canvas');
+                            tmpCanvas.width = 1200;
+                            tmpCanvas.height = Math.round(canvasEl.height * scale);
+                            const tmpCtx = tmpCanvas.getContext('2d');
+                            tmpCtx.drawImage(canvasEl, 0, 0, tmpCanvas.width, tmpCanvas.height);
+                            tmpCanvas.toBlob((blob) => {
+                                if (blob) {
+                                    const socketUrl = window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')
+                                        ? `http://${window.location.hostname}:3003`
+                                        : window.location.origin;
+                                    fetch(`${socketUrl}/api/carpet-image-upload`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'image/png' },
+                                        body: blob,
+                                    }).then(() => console.log('📸 Halı snapshot kaydedildi!'))
+                                        .catch(e => console.warn('📸 Upload hatası:', e.message));
+                                }
+                            }, 'image/png');
+                        }
+                    } catch (e) { console.warn('📸 Snapshot hatası:', e.message); }
                 }, totalFlyTime);
             }, 500);
         });
