@@ -6,6 +6,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import os from 'os';
 import archiver from 'archiver';
+import sharp from 'sharp';
 import { transformToMotif, getAIStatus, getTransformPrompt, setTransformPrompt } from './ai-motif.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -432,14 +433,28 @@ function createSessionFromDrawings(reason) {
   return sessionEntry;
 }
 
-// 💾 Base64 data URL'ü dosyaya kaydet
-function saveBase64ToFile(base64DataUrl, filename) {
+// 💾 Base64 data URL'ü dosyaya kaydet (opsiyonel sharp optimizasyonu)
+function saveBase64ToFile(base64DataUrl, filename, optimize = false) {
   try {
     const matches = base64DataUrl.match(/^data:image\/([a-z]+);base64,(.+)$/i);
     if (!matches) return null;
     const buffer = Buffer.from(matches[2], 'base64');
     const filePath = path.join(MOTIFS_DIR, filename);
-    fs.writeFileSync(filePath, buffer);
+
+    if (optimize) {
+      // 🚀 Async optimizasyon: sharp ile resize + JPEG dönüştürme
+      sharp(buffer)
+        .resize(512, 512, { fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 80 })
+        .toFile(filePath)
+        .then(info => console.log(`🚀 Motif optimize edildi: ${filename} (${Math.round(info.size / 1024)}KB)`))
+        .catch(err => {
+          console.warn(`⚠️ Sharp optimizasyon hatası, orijinal kaydediliyor: ${err.message}`);
+          fs.writeFileSync(filePath, buffer);
+        });
+    } else {
+      fs.writeFileSync(filePath, buffer);
+    }
     return filename;
   } catch (err) {
     console.error(`Dosya kaydetme hatası (${filename}):`, err.message);
@@ -669,8 +684,8 @@ io.on('connection', (socket) => {
         .then(aiDataUrl => {
           if (aiDataUrl) {
             // 💾 AI motifini dosyaya kaydet
-            const motifFilename = `motif_${drawing.id}.png`;
-            const savedMotif = saveBase64ToFile(aiDataUrl, motifFilename);
+            const motifFilename = `motif_${drawing.id}.jpg`;
+            const savedMotif = saveBase64ToFile(aiDataUrl, motifFilename, true);
 
             if (savedMotif) {
               drawing.aiFile = savedMotif;
@@ -933,8 +948,8 @@ io.on('connection', (socket) => {
     transformToMotif(dataUrl, drawing.userName)
       .then(aiDataUrl => {
         if (aiDataUrl) {
-          const motifFilename = `motif_${drawing.id}.png`;
-          const savedMotif = saveBase64ToFile(aiDataUrl, motifFilename);
+          const motifFilename = `motif_${drawing.id}.jpg`;
+          const savedMotif = saveBase64ToFile(aiDataUrl, motifFilename, true);
           if (savedMotif) drawing.aiFile = savedMotif;
 
           drawing.aiDataUrl = aiDataUrl;
@@ -1135,8 +1150,8 @@ io.on('connection', (socket) => {
       transformToMotif(d.dataUrl || '', d.userName)
         .then(aiDataUrl => {
           if (aiDataUrl) {
-            const motifFilename = `motif_${d.id}.png`;
-            const savedMotif = saveBase64ToFile(aiDataUrl, motifFilename);
+            const motifFilename = `motif_${d.id}.jpg`;
+            const savedMotif = saveBase64ToFile(aiDataUrl, motifFilename, true);
             if (savedMotif) d.aiFile = savedMotif;
             d.aiDataUrl = aiDataUrl;
             d.aiStatus = 'done';
