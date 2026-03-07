@@ -772,7 +772,17 @@ export default function HostPage() {
           background: 'rgba(0,0,0,0.75)',
           display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
           animation: 'fadeIn 0.5s ease',
+          overflowY: 'auto',
         }}>
+          {/* Sabit kapatma butonu — her zaman görünür (iframe içinde de) */}
+          <button type="button" onClick={() => setShowCelebration(false)} style={{
+            position: 'absolute', top: 12, right: 12, zIndex: 10001,
+            width: 40, height: 40, borderRadius: '50%',
+            background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.3)',
+            color: 'white', fontSize: 20, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            backdropFilter: 'blur(8px)', transition: 'all 0.3s',
+          }}>✕</button>
           {/* Konfeti parçacıkları */}
           {confettiPieces.map((piece) => (
             <div key={piece.id} style={{
