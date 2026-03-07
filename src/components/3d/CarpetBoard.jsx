@@ -1148,7 +1148,7 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children, onCarpetCanva
                             }, 'image/png');
                         }
                     } catch (e) { console.warn('📸 Snapshot hatası:', e.message); }
-                }, totalFlyTime);
+                }, totalFlyTime + 2000);
             }, 500);
         });
 
