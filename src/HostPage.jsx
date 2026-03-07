@@ -266,7 +266,7 @@ export default function HostPage() {
         const qr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(downloadUrl)}`;
         setDownloadQrUrl(qr);
         setShowCelebration(true);
-      }, 7000);
+      }, 13000);
     });
 
     // 📸 Admin'den snapshot talebi
