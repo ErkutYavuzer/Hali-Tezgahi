@@ -148,11 +148,11 @@ export default function DownloadPage() {
                         transition: 'all 0.3s', letterSpacing: 1,
                         width: '90%', maxWidth: 300,
                     }}>
-                        🎬 VİDEOYU İNDİR
+                        🎨 ESERİ İNDİR
                     </button>
 
                     <div style={{ marginTop: 16, fontSize: 12, opacity: 0.4 }}>
-                        Kolektif sanat eserimizin kutlama anı ✨
+                        Kolektif sanat eserimizi kaydedin ✨
                     </div>
                 </div>
             )}

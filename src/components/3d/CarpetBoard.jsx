@@ -1123,16 +1123,16 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children, onCarpetCanva
                     console.log('🎉 Kutlama replay tamamlandı!');
                     celebrationModeRef.current = false;
 
-                    // 📸 Offscreen carpet canvas'ı HTTP POST ile kaydet
+                    // 📸 3D canvas'ın ekran görüntüsünü HTTP POST ile kaydet (tam halı görünümü)
                     try {
-                        const canvasEl = offscreenCanvasRef.current;
-                        if (canvasEl) {
-                            const scale = 1200 / canvasEl.width;
+                        const threeCanvas = document.querySelector('canvas');
+                        if (threeCanvas) {
+                            const scale = 1200 / threeCanvas.width;
                             const tmpCanvas = document.createElement('canvas');
                             tmpCanvas.width = 1200;
-                            tmpCanvas.height = Math.round(canvasEl.height * scale);
+                            tmpCanvas.height = Math.round(threeCanvas.height * scale);
                             const tmpCtx = tmpCanvas.getContext('2d');
-                            tmpCtx.drawImage(canvasEl, 0, 0, tmpCanvas.width, tmpCanvas.height);
+                            tmpCtx.drawImage(threeCanvas, 0, 0, tmpCanvas.width, tmpCanvas.height);
                             tmpCanvas.toBlob((blob) => {
                                 if (blob) {
                                     const socketUrl = window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')
