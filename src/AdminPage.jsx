@@ -522,6 +522,8 @@ export default function AdminPage() {
         socket.on('admin:prompt', ({ prompt, presets }) => { setPromptText(prompt || ''); setPromptPresets(presets || []); });
         socket.on('admin:prompt-updated', () => addToast('AI prompt güncellendi! ✅', 'success'));
         socket.on('admin:events', ({ events }) => setEventsData(events || []));
+        socket.on('admin:celebration-qr-state', ({ visible }) => setCelebrationQrVisible(visible));
+        socket.on('toggle-celebration-qr', ({ show }) => setCelebrationQrVisible(!!show));
 
         socket.on('admin:error', ({ message }) => {
             addToast(message, 'error');

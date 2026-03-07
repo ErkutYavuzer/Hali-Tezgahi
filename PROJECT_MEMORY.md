@@ -1,7 +1,7 @@
 # Halı Tezgahı — Proje Hafızası
 
-> Son güncelleme: 2026-03-07T19:30:00+03:00
-> Mevcut versiyon: **v15.0.7-fix12** (web), **v15.0.7-fix** (socket)
+> Son güncelleme: 2026-03-07T19:34:00+03:00
+> Mevcut versiyon: **v15.0.8** (web + socket)
 > Deployed: Kubernetes (`hali-mozaik` namespace)
 
 ---
