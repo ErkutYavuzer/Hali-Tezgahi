@@ -90,6 +90,7 @@ export default function DownloadPage() {
 
             <h1 style={{
                 fontSize: 32, fontWeight: 900, margin: '0 0 8px 0',
+                textAlign: 'center',
                 background: 'linear-gradient(135deg, #ffd700, #ff6b35, #ffd700)',
                 WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
                 backgroundSize: '300% 100%',
