@@ -1111,10 +1111,17 @@ function CarpetBoard({ socket, carpetWidth, carpetDepth, children, onCarpetCanva
 
                 // Tüm animasyonlar bittikten sonra callback
                 const totalFlyTime = resolvedDrawings.length * STAGGER_MS + 4000;
+
+                // 📱 QR'ı 4 saniye erken göster (animasyon arka planda devam eder)
+                const qrShowTime = Math.max(totalFlyTime - 4000, 500);
+                setTimeout(() => {
+                    if (onCelebrationDone) onCelebrationDone();
+                }, qrShowTime);
+
+                // 🎬 Animasyon bitince celebration mode'u kapat
                 setTimeout(() => {
                     console.log('🎉 Kutlama replay tamamlandı!');
                     celebrationModeRef.current = false;
-                    if (onCelebrationDone) onCelebrationDone();
                 }, totalFlyTime);
             }, 500);
         });
