@@ -1,6 +1,6 @@
 # Halı Tezgahı — Proje Hafızası
 
-> Son güncelleme: 2026-03-07T04:09:00+03:00
+> Son güncelleme: 2026-03-07T19:30:00+03:00
 > Mevcut versiyon: **v15.0.7-fix12** (web), **v15.0.7-fix** (socket)
 > Deployed: Kubernetes (`hali-mozaik` namespace)
 
@@ -214,6 +214,13 @@ kubectl rollout restart deployment/hali-mozaik-socket -n hali-mozaik
 - v15.0.7-fix11: 3D canvas snapshot (offscreen yerine)
 - **v15.0.7-fix12**: Snapshot HostPage QR timer içine taşındı (32s, en güvenilir)
 
+### 7 Mart 2026 — Admin QR Toggle Özelliği
+
+1. ✅ Admin paneli Hızlı Aksiyonlar'a "Kutlama QR Göster/Kapat" butonu eklendi
+2. ✅ `admin:toggle-celebration-qr` Socket.IO event'i eklendi (server)
+3. ✅ HostPage `toggle-celebration-qr` event listener'ı eklendi
+4. ✅ Admin'den host ekranındaki kutlama QR overlay uzaktan açılıp kapatılabiliyor
+
 ### 17 Şubat 2026 — AI Motif Pipeline
 
 1. ✅ AI motif pipeline v4: tek adım img2img (Antigravity Gateway)
@@ -238,6 +245,7 @@ kubectl rollout restart deployment/hali-mozaik-socket -n hali-mozaik
 10. **Halı snapshot 3D canvas'tan alınmalı** — offscreen 2D canvas eksik görseller veriyor
 11. **Download sayfası HTTP ile resim çekiyor** — socket.io yerine `/api/carpet-image`
 12. **Dönen ışık efekti İSTENMİYOR** — kullanıcı beğenmedi, kaldırıldı
+13. **Kutlama QR overlay admin'den kontrol edilebilmeli** — `toggle-celebration-qr` event ile aç/kapat
 
 ---
 

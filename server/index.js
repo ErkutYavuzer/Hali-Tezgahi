@@ -979,6 +979,14 @@ io.on('connection', (socket) => {
     console.log(`🤖 Admin AI modu: ${aiEnabled ? 'AÇIK' : 'KAPALI'}`);
   });
 
+  // 🎉 Kutlama QR overlay aç/kapat (admin → host)
+  socket.on('admin:toggle-celebration-qr', ({ pin, show }) => {
+    if (!verifyAdmin(pin)) return socket.emit('admin:error', { message: 'Yetkisiz' });
+    io.emit('toggle-celebration-qr', { show: !!show });
+    emitActivity('admin', `Kutlama QR ${show ? 'açıldı' : 'kapatıldı'} 🎉`);
+    console.log(`🎉 Admin kutlama QR: ${show ? 'AÇIK' : 'KAPALI'}`);
+  });
+
   // 🔄 Halıyı sıfırla (admin) — oturum geçmişine kaydet
   socket.on('admin:reset-carpet', ({ pin }) => {
     if (!verifyAdmin(pin)) return socket.emit('admin:error', { message: 'Yetkisiz' });

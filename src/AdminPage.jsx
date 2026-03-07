@@ -427,6 +427,7 @@ export default function AdminPage() {
     const [toasts, setToasts] = useState([]);
     const [activities, setActivities] = useState([]);
     const [showQR, setShowQR] = useState(false);
+    const [celebrationQrVisible, setCelebrationQrVisible] = useState(false);
     const [promptText, setPromptText] = useState('');
     const [promptPresets, setPromptPresets] = useState([]);
     const [eventsData, setEventsData] = useState([]);
@@ -920,6 +921,25 @@ export default function AdminPage() {
                                             <div style={{ fontSize: 11, color: THEME.textMuted, marginTop: 2 }}>Ziyaretçi bağlantı kodu</div>
                                         </div>
                                     </button>
+                                    <button type="button" onClick={() => {
+                                        const newVal = !celebrationQrVisible;
+                                        setCelebrationQrVisible(newVal);
+                                        socketRef.current?.emit('admin:toggle-celebration-qr', { pin: pinRef.current, show: newVal });
+                                        addToast(newVal ? 'Kutlama QR açıldı' : 'Kutlama QR kapatıldı', 'info');
+                                    }} style={{
+                                        padding: '14px 16px', borderRadius: 12, border: 'none',
+                                        background: celebrationQrVisible ? 'rgba(255,183,77,0.18)' : 'rgba(255,183,77,0.08)',
+                                        color: '#ffb74d',
+                                        fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                                        display: 'flex', alignItems: 'center', gap: 10, transition: 'background 0.2s'
+                                    }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,183,77,0.22)'}
+                                        onMouseLeave={e => e.currentTarget.style.background = celebrationQrVisible ? 'rgba(255,183,77,0.18)' : 'rgba(255,183,77,0.08)'}>
+                                        <span style={{ fontSize: 18 }}>🎉</span>
+                                        <div style={{ textAlign: 'left' }}>
+                                            <div>{celebrationQrVisible ? 'Kutlama QR Kapat' : 'Kutlama QR Göster'}</div>
+                                            <div style={{ fontSize: 11, color: THEME.textMuted, marginTop: 2 }}>Host ekranındaki indirme QR</div>
+                                        </div>
+                                    </button>
                                     <a href={`${serverUrl}/?role=host`} target="_blank" rel="noreferrer" style={{
                                         padding: '14px 16px', borderRadius: 12, border: 'none',
                                         background: 'rgba(162,155,254,0.08)', color: '#a29bfe',
@@ -1346,45 +1366,46 @@ export default function AdminPage() {
                                             const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(downloadUrl)}`;
                                             const hasFiles = Array.isArray(s.files) && s.files.length > 0;
                                             return (
-                                            <div key={s.sessionId} style={{ ...THEME.glass, borderRadius: 20, padding: 24 }}>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                                                    <div style={{ fontSize: 14, fontWeight: 700, color: THEME.primary }}>Oturum #{sessionsData.length - i}</div>
-                                                    <div style={{ fontSize: 11, color: THEME.textMuted }}>
-                                                        {new Date(s.endedAt).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                                <div key={s.sessionId} style={{ ...THEME.glass, borderRadius: 20, padding: 24 }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                                                        <div style={{ fontSize: 14, fontWeight: 700, color: THEME.primary }}>Oturum #{sessionsData.length - i}</div>
+                                                        <div style={{ fontSize: 11, color: THEME.textMuted }}>
+                                                            {new Date(s.endedAt).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                                        </div>
+                                                    </div>
+                                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                                                        <div style={{ background: 'rgba(0,0,0,0.2)', padding: 10, borderRadius: 10, textAlign: 'center' }}>
+                                                            <div style={{ fontSize: 22, fontWeight: 800 }}>{s.totalDrawings}</div>
+                                                            <div style={{ fontSize: 11, color: THEME.textMuted }}>Toplam Çizim</div>
+                                                        </div>
+                                                        <div style={{ background: 'rgba(0,0,0,0.2)', padding: 10, borderRadius: 10, textAlign: 'center' }}>
+                                                            <div style={{ fontSize: 22, fontWeight: 800 }}>{s.userCount}</div>
+                                                            <div style={{ fontSize: 11, color: THEME.textMuted }}>Katılımcı</div>
+                                                        </div>
+                                                    </div>
+                                                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                                        <span style={{ background: 'rgba(0,230,118,0.1)', color: THEME.success, padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600 }}>✅ {s.aiSuccessCount} AI</span>
+                                                        {s.aiFailedCount > 0 && <span style={{ background: 'rgba(255,61,0,0.1)', color: THEME.danger, padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600 }}>❌ {s.aiFailedCount} Başarısız</span>}
+                                                    </div>
+                                                    <div style={{ marginTop: 12, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                                                        {hasFiles ? (
+                                                            <>
+                                                                <a href={downloadUrl} style={{
+                                                                    padding: '6px 10px', borderRadius: 8, border: 'none',
+                                                                    background: THEME.surfaceHover, color: THEME.text, fontSize: 11,
+                                                                    fontWeight: 600, textDecoration: 'none', fontFamily: 'inherit'
+                                                                }}>📥 Oturumu indir</a>
+                                                                <div style={{ width: 54, height: 54, background: '#fff', borderRadius: 8, padding: 4, boxSizing: 'border-box' }}>
+                                                                    <img src={qrUrl} alt="Oturum QR" style={{ width: '100%', height: '100%', display: 'block' }} />
+                                                                </div>
+                                                            </>
+                                                        ) : (
+                                                            <span style={{ fontSize: 11, color: THEME.textMuted }}>Oturum dosyası yok</span>
+                                                        )}
                                                     </div>
                                                 </div>
-                                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
-                                                    <div style={{ background: 'rgba(0,0,0,0.2)', padding: 10, borderRadius: 10, textAlign: 'center' }}>
-                                                        <div style={{ fontSize: 22, fontWeight: 800 }}>{s.totalDrawings}</div>
-                                                        <div style={{ fontSize: 11, color: THEME.textMuted }}>Toplam Çizim</div>
-                                                    </div>
-                                                    <div style={{ background: 'rgba(0,0,0,0.2)', padding: 10, borderRadius: 10, textAlign: 'center' }}>
-                                                        <div style={{ fontSize: 22, fontWeight: 800 }}>{s.userCount}</div>
-                                                        <div style={{ fontSize: 11, color: THEME.textMuted }}>Katılımcı</div>
-                                                    </div>
-                                                </div>
-                                                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                                                    <span style={{ background: 'rgba(0,230,118,0.1)', color: THEME.success, padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600 }}>✅ {s.aiSuccessCount} AI</span>
-                                                    {s.aiFailedCount > 0 && <span style={{ background: 'rgba(255,61,0,0.1)', color: THEME.danger, padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600 }}>❌ {s.aiFailedCount} Başarısız</span>}
-                                                </div>
-                                                <div style={{ marginTop: 12, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                                                    {hasFiles ? (
-                                                        <>
-                                                            <a href={downloadUrl} style={{
-                                                                padding: '6px 10px', borderRadius: 8, border: 'none',
-                                                                background: THEME.surfaceHover, color: THEME.text, fontSize: 11,
-                                                                fontWeight: 600, textDecoration: 'none', fontFamily: 'inherit'
-                                                            }}>📥 Oturumu indir</a>
-                                                            <div style={{ width: 54, height: 54, background: '#fff', borderRadius: 8, padding: 4, boxSizing: 'border-box' }}>
-                                                                <img src={qrUrl} alt="Oturum QR" style={{ width: '100%', height: '100%', display: 'block' }} />
-                                                            </div>
-                                                        </>
-                                                    ) : (
-                                                        <span style={{ fontSize: 11, color: THEME.textMuted }}>Oturum dosyası yok</span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        )})}
+                                            )
+                                        })}
                                     </div>
                                 </div>
                             )}

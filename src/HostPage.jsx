@@ -319,6 +319,21 @@ export default function HostPage() {
       }, 300);
     });
 
+    // 🎉 Admin'den kutlama QR overlay aç/kapat
+    newSocket.on('toggle-celebration-qr', ({ show }) => {
+      if (show) {
+        const origin = window.location.origin;
+        const downloadUrl = `${origin}/?role=download`;
+        const qr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(downloadUrl)}`;
+        setDownloadQrUrl(qr);
+        setShowCelebration(true);
+        console.log('🎉 Admin kutlama QR açtı');
+      } else {
+        setShowCelebration(false);
+        console.log('🎉 Admin kutlama QR kapattı');
+      }
+    });
+
     return () => {
       newSocket.off('server-ip');
       newSocket.off('drawing-count');
@@ -326,6 +341,7 @@ export default function HostPage() {
       newSocket.off('carpet-complete');
       newSocket.off('take-snapshot');
       newSocket.off('request-carpet-image');
+      newSocket.off('toggle-celebration-qr');
       newSocket.close();
     };
   }, [getCarpetImageData]);
