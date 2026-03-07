@@ -983,9 +983,15 @@ io.on('connection', (socket) => {
   socket.on('admin:toggle-celebration-qr', ({ pin, show }) => {
     if (!verifyAdmin(pin)) return socket.emit('admin:error', { message: 'Yetkisiz' });
     io.emit('toggle-celebration-qr', { show: !!show });
-    socket.emit('admin:celebration-qr-state', { visible: !!show });
+    io.emit('admin:celebration-qr-state', { visible: !!show });
     emitActivity('admin', `Kutlama QR ${show ? 'açıldı' : 'kapatıldı'} 🎉`);
     console.log(`🎉 Admin kutlama QR: ${show ? 'AÇIK' : 'KAPALI'}`);
+  });
+
+  // 📡 Host celebration QR state sync (host → admin)
+  socket.on('host:celebration-shown', ({ visible }) => {
+    io.emit('admin:celebration-qr-state', { visible: !!visible });
+    console.log(`📡 Host celebration QR state: ${visible ? 'GÖSTER' : 'KAPAT'}`);
   });
 
   // 🔄 Halıyı sıfırla (admin) — oturum geçmişine kaydet

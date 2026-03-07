@@ -1,6 +1,6 @@
 # Halı Tezgahı — Proje Hafızası
 
-> Son güncelleme: 2026-03-07T19:34:00+03:00
+> Son güncelleme: 2026-03-07T20:20:00+03:00
 > Mevcut versiyon: **v15.0.8** (web + socket)
 > Deployed: Kubernetes (`hali-mozaik` namespace)
 
@@ -144,14 +144,14 @@ t=32s: QR overlay + celebration gösterilir (HostPage setTimeout)
 
 | Image | Versiyon | Açıklama |
 |-------|----------|----------|
-| `ghcr.io/ayavuzer/hali-mozaik-web` | **v15.0.7-fix12** | Frontend (Vite build + nginx) |
+| `ghcr.io/ayavuzer/hali-mozaik-web` | **v15.0.8** | Frontend (Vite build + nginx) |
 | `ghcr.io/ayavuzer/hali-mozaik-socket` | **v15.0.7-fix** | Socket.IO server + AI pipeline |
 
 ### Kubernetes (namespace: hali-mozaik)
 
 | Resource | Image |
 |----------|-------|
-| `deployment/hali-mozaik-web` | `ghcr.io/ayavuzer/hali-mozaik-web:v15.0.7-fix12` |
+| `deployment/hali-mozaik-web` | `ghcr.io/ayavuzer/hali-mozaik-web:v15.0.8` |
 | `deployment/hali-mozaik-socket` | `ghcr.io/ayavuzer/hali-mozaik-socket:v15.0.7-fix` |
 
 ### API Endpoint'leri (Server — Express)
@@ -213,6 +213,12 @@ kubectl rollout restart deployment/hali-mozaik-socket -n hali-mozaik
 - v15.0.7-fix10: Snapshot timing +2s
 - v15.0.7-fix11: 3D canvas snapshot (offscreen yerine)
 - **v15.0.7-fix12**: Snapshot HostPage QR timer içine taşındı (32s, en güvenilir)
+
+### 7 Mart 2026 — QR Kapatma Butonu Düzeltmesi (v15.0.8)
+
+1. ✅ Kutlama overlay'ine sağ üst köşeye sabit `✕` kapatma butonu eklendi (iframe'de de görünür)
+2. ✅ Overlay `overflowY: auto` yapıldı (küçük ekranlarda scroll edilebilir)
+3. ✅ Deploy: `ghcr.io/ayavuzer/hali-mozaik-web:v15.0.8`
 
 ### 7 Mart 2026 — Admin QR Toggle Özelliği
 

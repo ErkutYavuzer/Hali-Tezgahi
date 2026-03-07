@@ -95,6 +95,8 @@ function BreathingCarpet({ socket, onCarpetCanvasReady }) {
             const qr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(downloadUrl)}`;
             setDownloadQrUrl(qr);
             setShowCelebration(true);
+            // 📡 Admin'e bildir (state sync)
+            if (socket) socket.emit('host:celebration-shown', { visible: true });
 
             // 🎥 Video arka planda durdur/yükle
             setTimeout(() => {
@@ -293,6 +295,8 @@ export default function HostPage() {
         const qr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(downloadUrl)}`;
         setDownloadQrUrl(qr);
         setShowCelebration(true);
+        // 📡 Admin'e bildir (state sync)
+        if (newSocket) newSocket.emit('host:celebration-shown', { visible: true });
       }, 32000);
     });
 
@@ -775,13 +779,13 @@ export default function HostPage() {
           overflowY: 'auto',
         }}>
           {/* Sabit kapatma butonu — her zaman görünür (iframe içinde de) */}
-          <button type="button" onClick={() => setShowCelebration(false)} style={{
-            position: 'absolute', top: 12, right: 12, zIndex: 10001,
-            width: 40, height: 40, borderRadius: '50%',
-            background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.3)',
-            color: 'white', fontSize: 20, cursor: 'pointer',
+          <button type="button" onClick={() => { setShowCelebration(false); if (socket) socket.emit('host:celebration-shown', { visible: false }); }} style={{
+            position: 'absolute', top: 10, right: 10, zIndex: 10001,
+            width: 44, height: 44, borderRadius: '50%',
+            background: 'rgba(220, 38, 38, 0.9)', border: '2px solid rgba(255,255,255,0.5)',
+            color: 'white', fontSize: 22, fontWeight: 700, cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            backdropFilter: 'blur(8px)', transition: 'all 0.3s',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.5)', transition: 'all 0.3s',
           }}>✕</button>
           {/* Konfeti parçacıkları */}
           {confettiPieces.map((piece) => (
@@ -867,7 +871,7 @@ export default function HostPage() {
               </button>
 
               {/* Kapat Butonu */}
-              <button type="button" onClick={() => setShowCelebration(false)} style={{
+              <button type="button" onClick={() => { setShowCelebration(false); if (socket) socket.emit('host:celebration-shown', { visible: false }); }} style={{
                 padding: '14px 32px', borderRadius: 16, cursor: 'pointer',
                 background: 'rgba(255,255,255,0.1)',
                 border: '1px solid rgba(255,255,255,0.2)', color: 'rgba(255,255,255,0.8)',
