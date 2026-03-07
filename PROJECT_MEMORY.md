@@ -1,7 +1,7 @@
 # Halı Tezgahı — Proje Hafızası
 
-> Son güncelleme: 2026-02-17T20:06:00+03:00
-> Mevcut versiyon: **v6.5.3** (web), **v6.5.1** (socket)
+> Son güncelleme: 2026-03-07T04:09:00+03:00
+> Mevcut versiyon: **v15.0.7-fix12** (web), **v15.0.7-fix** (socket)
 > Deployed: Kubernetes (`hali-mozaik` namespace)
 
 ---
@@ -26,6 +26,7 @@
 |-----|-----|
 | Host (3D Halı) | `https://hali-mozaik.mindops.net/host` |
 | Client (Çizim) | `https://hali-mozaik.mindops.net/?role=client` |
+| Download | `https://hali-mozaik.mindops.net/?role=download` |
 | QR sayfası | `https://hali-mozaik.mindops.net/` |
 
 ---
@@ -36,14 +37,17 @@
 Hali-Tezgahi/
 ├── server/
 │   ├── index.js              # Socket.IO server (Express + Socket.IO)
+│   │                         # Endpoint'ler: /api/upload-celebration-video,
+│   │                         #   /api/celebration-video, /api/carpet-image,
+│   │                         #   /api/carpet-image-upload (POST)
 │   ├── ai-motif.js           # 🤖 AI motif pipeline v4 (Antigravity Gateway img2img)
 │   ├── carpet_data.json      # Çizim verisi (persist)
 │   └── carpet_latest.png     # Son halı screenshot
 ├── src/
 │   ├── App.jsx               # Router (/, /host, /download)
 │   ├── ClientPage.jsx        # Telefon çizim sayfası
-│   ├── HostPage.jsx          # 3D halı host sayfası
-│   ├── DownloadPage.jsx      # Halı indirme sayfası
+│   ├── HostPage.jsx          # 3D halı host sayfası + QR/celebration overlay
+│   ├── DownloadPage.jsx      # Halı indirme sayfası (HTTP /api/carpet-image)
 │   ├── constants.js          # Konfigürasyon sabitleri (CARPET_WIDTH=40, CARPET_DEPTH=24)
 │   ├── audio/                # Ses efektleri
 │   └── components/3d/
@@ -70,14 +74,6 @@ Hali-Tezgahi/
 4. data:image/jpeg;base64,... olarak döner
 ```
 
-### Önemli: Orijinal çizim DOĞRUDAN modele gönderiliyor (image_url)
-
-Bu sayede:
-
-- Ev çizilmişse → ev şeklinde kilim motifi
-- Kedi çizilmişse → kedi şeklinde kilim motifi
-- Yıldız çizilmişse → yıldız şeklinde kilim motifi
-
 ### Konfigürasyon
 
 | Parametre | Değer |
@@ -88,73 +84,56 @@ Bu sayede:
 | **Max concurrent** | 2 |
 | **Response format** | `![image](data:image/jpeg;base64,...)` (markdown içinde) |
 
-### Transform Prompt (anahtar kurallar)
-
-1. KEEP the same subject/shape from the drawing
-2. Convert to geometric kilim style: stepped lines, diamonds, triangles, zigzag
-3. Traditional Turkish kilim color palette
-4. Add decorative kilim border frame
-5. Flat, textile-like coloring — no gradients, no 3D effects
-6. Square format, centered composition
-
-### Önceki Denemeler ve Neden Bırakıldı
-
-| Versiyon | Yaklaşım | Sorun |
-|----------|----------|-------|
-| v1 | Gemini text → SVG üretimi | Konu korunmuyordu, generic SVG |
-| v2 | @google/genai SDK (gemini-2.5-flash-image) | Model ismi hatalı (404), sonra quota aşıldı (429) |
-| v3 | Antigravity Gateway: 2 adım (analiz + üretim) | Çizimle alakasız motif çıkıyordu |
-| **v4** | **Antigravity Gateway: tek adım img2img** | ✅ **Çalışıyor!** Orijinal şekli koruyor |
-
 ---
 
 ## 🧶 CarpetBoard.jsx — Ana Bileşen
+
+### Kutlama Animasyonu (Celebration Replay)
+
+Halı tamamlanınca (`carpet-complete` event):
+
+1. Server `celebration-replay` event'i emitler (tüm çizimlerle)
+2. `celebrationModeRef.current = true` — initial-carpet engellenir
+3. Canvas temizlenir, 500ms beklenir
+4. Tüm pikseller sırayla havadan uçarak halıya konur:
+   - **Hız**: `0.5 + Math.random() * 0.2` (hızlı, doğal)
+   - **İç stagger**: `pixelIndex * 0.5` ms
+   - **Dış stagger**: `drawingIndex * 80` ms (STAGGER_MS)
+5. `totalFlyTime = resolvedDrawings.length * 80 + 4000` ms
+6. totalFlyTime sonra `celebrationModeRef.current = false`
+7. QR timer ayrı: `onCelebrationDone` çağrısı (CarpetBoard'da, 500ms'te)
+
+### QR / Celebration Overlay Zamanlaması
+
+```
+t=0:   carpet-complete geldi → video kaydı başlar
+t=32s: QR overlay + celebration gösterilir (HostPage setTimeout)
+       + 3D canvas snapshot → /api/carpet-image-upload (HTTP POST)
+```
+
+> **ÖNEMLİ**: QR delay HostPage.jsx'te `setTimeout(..., 32000)` ile kontrol ediliyor.
+> Bu değer `carpet-complete` event'inden itibaren sayılır.
+
+### Halı Resmi (Download Page)
+
+- **Kaynak**: HostPage QR timer'ı içinde 3D canvas (`document.querySelector('canvas')`) snapshot'ı alınıyor
+- **İşlem**: 1200px'e küçültülüyor → PNG blob → HTTP POST `/api/carpet-image-upload`
+- **Sunucu**: `carpet_latest.png` olarak kaydediyor
+- **Download**: DownloadPage `GET /api/carpet-image` ile yüklüyor
+- **Eski yöntem (KULLANILMIYOR)**: socket.io `carpet-image-save` event'i (1MB limit aşılıyordu)
 
 ### Halı Shader (minimal kumaş hissi)
 
 - **Vertex**: Çok hafif fiber doku (0.3 intensity, 0.008 displacement)
 - **Fragment**: Neredeyse görünmez iplik hissi (0.015), hafif saturation (1.3x), rim light
-- ❌ **Kaldırılanlar**: Warp-weft grid, knot variation, abrash, pile direction (çok agresifti, damalı desen oluşturuyordu)
-
-### applyWovenEnhancement — KALDIRILDI ❌
-
-- Tüm `applyWovenEnhancement` çağrıları kaldırıldı
-- Bu fonksiyon orijinal çizimi block-averaging ile bozuyordu
-- Artık çizimler olduğu gibi gösteriliyor, dönüşüm tamamen AI'a bırakıldı
-
-### morphToAIMotif (AI motif yerleştirme)
-
-```javascript
-// Sadece çizim alanını temizle — yanındaki motiflere DOKUNMA
-const pad = 2; // Minimal padding (anti-alias artıkları)
-ctx.clearRect(clearX, clearY, clearW, clearH);
-ctx.fillStyle = '#f0e4d0'; // krem zemin
-ctx.fillRect(clearX, clearY, clearW, clearH);
-ctx.drawImage(aiImg, x, y, width, height);
-```
-
-**ÖNEMLİ**: Padding eskiden `width * 0.5` idi → yanındaki motifleri siliyordu. Şimdi `2px`.
-
-### Canvas Zemin
-
-- Düz krem `#f0e4d0` + çok hafif grid (opacity 0.025, 6px aralık)
-- Grid shader'da değil, canvas init'te
+- ❌ **Kaldırılanlar**: Warp-weft grid, knot variation, abrash, pile direction
 
 ---
 
 ## 🎨 CarpetBorder.jsx — Kenarlık ve Püsküller
 
-### Püsküller (CarpetFringes)
-
-- ✅ **Kısa kenarda** (sol ve sağ → X ekseni uçları)
-- Depth boyunca diziliyor (Z ekseni)
-- `FRINGE_GEO`: CylinderGeometry(0.005, 0.018, 0.7, 6)
-- Rastgele pozisyon, rotasyon, ölçek varyasyonu
-
-### Kenarlık (CarpetBorder)
-
-- 4 kenar mesh (üst, alt, sol, sağ)
-- 4 köşe süsü (altın metalik)
+- Püsküller **kısa kenarda** (sol ve sağ → X ekseni uçları)
+- Kenarlık: 4 kenar mesh + 4 köşe süsü (altın metalik)
 - `BORDER_WIDTH = 0.4`
 
 ---
@@ -165,32 +144,37 @@ ctx.drawImage(aiImg, x, y, width, height);
 
 | Image | Versiyon | Açıklama |
 |-------|----------|----------|
-| `ghcr.io/ayavuzer/hali-mozaik-web` | **v6.5.3** | Frontend (Vite build + nginx) |
-| `ghcr.io/ayavuzer/hali-mozaik-socket` | **v6.5.1** | Socket.IO server + AI pipeline |
+| `ghcr.io/ayavuzer/hali-mozaik-web` | **v15.0.7-fix12** | Frontend (Vite build + nginx) |
+| `ghcr.io/ayavuzer/hali-mozaik-socket` | **v15.0.7-fix** | Socket.IO server + AI pipeline |
 
 ### Kubernetes (namespace: hali-mozaik)
 
 | Resource | Image |
 |----------|-------|
-| `deployment/hali-mozaik-web` | `ghcr.io/ayavuzer/hali-mozaik-web:v6.5.3` |
-| `deployment/hali-mozaik-socket` | `ghcr.io/ayavuzer/hali-mozaik-socket:v6.5.1` |
+| `deployment/hali-mozaik-web` | `ghcr.io/ayavuzer/hali-mozaik-web:v15.0.7-fix12` |
+| `deployment/hali-mozaik-socket` | `ghcr.io/ayavuzer/hali-mozaik-socket:v15.0.7-fix` |
 
-### Env Variables (Socket Pod)
+### API Endpoint'leri (Server — Express)
 
-```
-AI_API_URL=https://antigravity2.mindops.net/v1/chat/completions
-AI_API_KEY=sk-antigravity-lejyon-2026
-```
+| Endpoint | Method | Açıklama |
+|----------|--------|----------|
+| `/api/upload-celebration-video` | POST | Video yükleme (webm) |
+| `/api/celebration-video` | GET | Video indirme |
+| `/api/carpet-image-upload` | POST | Halı snapshot yükleme (PNG blob) |
+| `/api/carpet-image` | GET | Halı resmi indirme |
+
+> **ÖNEMLİ**: Ingress sadece `/api/*`, `/socket.io`, `/motifs`, `/galeri` yollarını socket server'a yönlendiriyor. Diğer yollar nginx'e gider → 404. Yeni endpoint eklenmesi gerekirse mutlaka `/api/` prefix'i kullanılmalı.
 
 ### Build & Deploy Komutları
 
 ```bash
 # Web build + push
-cd /Users/aliyavuzer/Hali-Tezgahi
-docker buildx build --platform linux/amd64 -t ghcr.io/ayavuzer/hali-mozaik-web:vX.X.X -t ghcr.io/ayavuzer/hali-mozaik-web:latest --push -f Dockerfile.web .
+docker build --platform linux/amd64 -t ghcr.io/ayavuzer/hali-mozaik-web:vX.X.X -f Dockerfile.web .
+docker push ghcr.io/ayavuzer/hali-mozaik-web:vX.X.X
 
 # Socket build + push
-docker buildx build --platform linux/amd64 -t ghcr.io/ayavuzer/hali-mozaik-socket:vX.X.X -t ghcr.io/ayavuzer/hali-mozaik-socket:latest --push -f Dockerfile.socket .
+docker build --platform linux/amd64 -t ghcr.io/ayavuzer/hali-mozaik-socket:vX.X.X -f Dockerfile.socket .
+docker push ghcr.io/ayavuzer/hali-mozaik-socket:vX.X.X
 
 # Deploy
 kubectl set image deployment/hali-mozaik-web web=ghcr.io/ayavuzer/hali-mozaik-web:vX.X.X -n hali-mozaik
@@ -202,31 +186,41 @@ kubectl rollout restart deployment/hali-mozaik-socket -n hali-mozaik
 
 ---
 
-## 📋 Tamamlanan İşler (17 Şubat 2026 — Bu Oturum)
+## 📋 Oturum Geçmişi
 
-### AI Motif Pipeline
+### 7 Mart 2026 — Kutlama/QR/İndirme Düzeltmeleri
 
-1. ✅ @google/genai SDK ile Gemini native image generation denendi → quota sorunu
-2. ✅ Model ismi düzeltildi: `gemini-2.5-flash-preview-04-17` → `gemini-2.5-flash-image`
-3. ✅ Google AI Studio API quota aşıldı → Antigravity Gateway'e geçildi
-4. ✅ 2 adımlı pipeline (analiz + üretim) → çizimle alakasız motif çıkıyordu
-5. ✅ **Tek adım img2img pipeline** → orijinal çizim doğrudan modele gönderiliyor
-6. ✅ `gemini-3-pro-image-1x1` ile kilim motifine dönüşüm **ÇALIŞIYOR** ✨
-7. ✅ Rate limit sonsuz döngü düzeltildi (retry limiti eklendi)
+**Başlangıç**: v15.0.6 → **Sonuç**: v15.0.7-fix12
 
-### Görsel İyileştirmeler
+1. ✅ Kutlama animasyonu hız optimizasyonu (speed 0.15→0.5, stagger 3→0.5ms)
+2. ✅ QR zamanlaması `carpet-complete` handler'ından bağımsız timer'a ayrıldı (32s)
+3. ✅ "VİDEOYU İNDİR" → **"ESERİ İNDİR"** (HostPage + DownloadPage)
+4. ✅ Download sayfası: socket.io → HTTP `GET /api/carpet-image` (güvenilir)
+5. ✅ Halı snapshot: 3D canvas → 1200px resize → HTTP POST `/api/carpet-image-upload`
+6. ✅ Server'a `/api/carpet-image-upload` POST endpoint eklendi
+7. ✅ Tüm video endpoint'lerine `/api/` prefix eklendi (ingress routing fix)
+8. ✅ Download sayfası başlık `textAlign: center` düzeltmesi
+9. ✅ `onCelebrationDone` QR'ı hemen gösteriyor (2s wait + video upload blocking kaldırıldı)
+10. ✅ `carpet-complete`'ten yanlış 3D canvas snapshot ve 45s fallback kaldırıldı
 
-1. ✅ `applyWovenEnhancement` tamamen kaldırıldı (çizimleri bozuyordu)
-2. ✅ Shader grid (warp-weft, knot, abrash) kaldırıldı → temiz krem halı
-3. ✅ AI motif padding %50 → 2px (yanındaki motifler artık silinmiyor)
-4. ✅ Püsküller kısa kenara taşındı (gerçek halı gibi)
+**VERSİYON GEÇMİŞİ** (bu oturum):
+- v15.0.6: `/api/` prefix fix
+- v15.0.7: Hız boost (0.5 speed, 0.5ms stagger)
+- v15.0.7-fix: + QR hemen göster + ESERİ İNDİR + HTTP carpet-image
+- v15.0.7-fix3: QR timer ayrıldı (ayrı timer)
+- v15.0.7-fix4: QR `carpet-complete`'ten + offscreen canvas HTTP POST
+- v15.0.7-fix5→fix9: QR delay fine-tuning (3s→7s→13s→23s→28s→32s)
+- v15.0.7-fix10: Snapshot timing +2s
+- v15.0.7-fix11: 3D canvas snapshot (offscreen yerine)
+- **v15.0.7-fix12**: Snapshot HostPage QR timer içine taşındı (32s, en güvenilir)
 
-### Önceki Oturumlardan
+### 17 Şubat 2026 — AI Motif Pipeline
 
-1. ✅ Flying pixels 3D animasyon sistemi
-2. ✅ AI motif → orijinali TAM DEĞİŞTİRME (overlay değil)
-3. ✅ initial-carpet: AI olanlar direkt göster (re-processing yok)
-4. ✅ İsim sağ alt köşede (Georgia serif, iplik doku efekti)
+1. ✅ AI motif pipeline v4: tek adım img2img (Antigravity Gateway)
+2. ✅ `applyWovenEnhancement` kaldırıldı
+3. ✅ Shader grid kaldırıldı → temiz krem halı
+4. ✅ AI motif padding %50 → 2px
+5. ✅ Püsküller kısa kenara taşındı
 
 ---
 
@@ -239,51 +233,40 @@ kubectl rollout restart deployment/hali-mozaik-socket -n hali-mozaik
 5. **morphToAIMotif padding minimal (2px)** — %50 padding yanındaki motifleri siliyor
 6. **Püsküller kısa kenarda olmalı** — gerçek Anadolu halıları gibi
 7. **Antigravity Gateway kullan, direkt Google API değil** — quota sorunu yok
-8. **Sayfa yenilenince AI tekrar çalışmamalı** — AI sonucu persist ediliyor
-9. **İsim sağ alt köşede** — Georgia serif, iplik dokusu efekti
-10. **Dönen ışık efekti İSTENMİYOR** — kullanıcı beğenmedi, kaldırıldı
+8. **Endpoint'ler `/api/` prefix'i ile olmalı** — ingress routing gereksinimi
+9. **QR delay `carpet-complete`'ten bağımsız timer** — animasyon + QR ayrı kontrol
+10. **Halı snapshot 3D canvas'tan alınmalı** — offscreen 2D canvas eksik görseller veriyor
+11. **Download sayfası HTTP ile resim çekiyor** — socket.io yerine `/api/carpet-image`
+12. **Dönen ışık efekti İSTENMİYOR** — kullanıcı beğenmedi, kaldırıldı
 
 ---
 
-## 🔄 Git History (Son Commitler)
+## ❌ İptal Edilen / Denenip Bırakılanlar
 
-```
-d6abac9 fix: püsküller kısa kenara taşındı — gerçek halı gibi
-399977c fix: AI motif padding %50→2px — yanındaki motifler artık silinmeyecek
-469d50f fix: img2img — orijinal çizim doğrudan modele gönderiliyor
-d4029b2 feat: AI motif v3 — Antigravity Gateway ile çalışıyor
-5b7f0a4 fix: AI retry limiti + detaylı hata loglaması
-0633704 fix: model ismi düzeltildi → gemini-2.5-flash-image
-52b9b1f fix: shader grid kaldırıldı — temiz krem halı zemini
-0787927 fix: applyWovenEnhancement kaldırıldı — temiz halı + AI dönüşüm
-eac3e9a feat: AI motif v2 — Gemini native image generation
-```
+| Özellik | Neden | Tarih |
+|---------|-------|-------|
+| `applyWovenEnhancement` | Çizimleri bozuyordu (block-averaging) | 17 Şubat 2026 |
+| Agresif shader grid | Damalı desen oluşturuyordu | 17 Şubat 2026 |
+| Socket.io carpet-image-save | 1MB limit aşılıyordu, sessizce fail | 7 Mart 2026 |
+| Offscreen 2D canvas snapshot | Motifler sadece sol üst köşede çıkıyordu | 7 Mart 2026 |
+| `handleLand` skip during celebration | Animasyon efektlerini bozuyordu (v15.1.x) | 7 Mart 2026 |
+| `totalFlyTime` düşürme (QR erken) | Animasyonu da bozuyordu (aynı timer) | 7 Mart 2026 |
+| `carpet-complete`'ten hemen QR gösterme | Animasyon izlenemiyordu | 7 Mart 2026 |
 
 ---
 
 ## 🔧 Sonraki Oturum İçin Yapılacaklar
 
-### Öncelik 1: UX İyileştirmeleri
+### Öncelik 1: İndirme Resmi Doğrulama
+- [ ] QR okuyunca indirme sayfasındaki resmi doğrula (3D canvas snapshot doğru mu?)
+- [ ] 3D canvas'ın `preserveDrawingBuffer` ile tam halı görüntüsü verdiğini confirm et
 
+### Öncelik 2: UX İyileştirmeleri
 - [ ] AI motif geliş animasyonu (fade-in veya progressive reveal)
 - [ ] Çizim yapılırken "AI dönüştürülüyor..." loading göstergesi
 - [ ] Birden fazla çizim güzel dizilim/grid optimizasyonu
 
-### Öncelik 2: Visual Polish
-
-- [ ] Halı kenarlığına zarif kilim border deseni (düz kırmızı yerine)
+### Öncelik 3: Visual Polish
+- [ ] Halı kenarlığına zarif kilim border deseni
 - [ ] Ambiyans ışığı ve gölge iyileştirmesi
 - [ ] Kamera açısı/zoom ayarı
-
-### Öncelik 3: Performans & Robustness
-
-- [ ] AI motif caching (aynı çizim tekrar gelirse)
-- [ ] Flying pixels performans profiling
-- [ ] Error recovery: AI başarısız olursa orijinal çizimi koru ve göster
-- [ ] Socket reconnection handling
-
-### Öncelik 4: Yeni Özellikler
-
-- [ ] Halı tamamlandığında kutlama ekranı
-- [ ] Çizim silme/geri alma (host kontrolü)
-- [ ] Farklı halı boyutları/şekilleri
