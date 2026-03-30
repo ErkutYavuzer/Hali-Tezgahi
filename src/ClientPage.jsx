@@ -81,6 +81,7 @@ export default function ClientPage() {
   const [connected, setConnected] = useState(false);
   const [sendState, setSendState] = useState('idle'); // idle | sending | success
   const [activeCat, setActiveCat] = useState(0);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [userName, setUserName] = useState(() => localStorage.getItem('carpet-user-name') || '');
   const [lang, setLangState] = useState(getLang);
   const T = LANG[lang] || LANG.tr;
@@ -851,42 +852,71 @@ export default function ClientPage() {
         </div>
 
         {/* 🧶 Çizimi Dokula — tam genişlik */}
-        <button
-          id="send-trigger-btn"
-          onClick={sendDrawing}
-          disabled={sendState === 'sending'}
-          style={{
-            width: '100%', padding: '18px 20px', borderRadius: '16px',
-            border: 'none', marginBottom: '10px',
-            background: sendState === 'success'
-              ? 'linear-gradient(135deg, #2ecc71, #27ae60)'
-              : sendState === 'sending'
-                ? 'linear-gradient(135deg, #95a5a6, #7f8c8d)'
-                : 'linear-gradient(135deg, #ffd700 0%, #ff8c00 50%, #ffd700 100%)',
-            backgroundSize: sendState === 'idle' ? '200% auto' : '100% auto',
-            animation: sendState === 'idle'
-              ? 'shimmer 2.5s linear infinite'
-              : sendState === 'success'
-                ? 'successPop 0.6s ease'
-                : 'none',
-            color: sendState === 'success' ? '#fff' : '#1a0a00',
-            fontWeight: '900', fontSize: '16px', fontFamily: 'inherit',
-            cursor: sendState === 'sending' ? 'wait' : 'pointer',
-            boxShadow: sendState === 'success'
-              ? '0 6px 25px rgba(46,204,113,0.4)'
-              : '0 6px 25px rgba(255,215,0,0.3)',
-            letterSpacing: '0.5px',
-            transition: 'background 0.4s, box-shadow 0.4s, color 0.4s',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-          }}>
-          {sendState === 'success' ? (
-            <>✈️ {lang === 'tr' ? 'HALIYA UÇUYOR!' : 'FLYING TO CARPET!'}</>
-          ) : sendState === 'sending' ? (
-            <>⏳ {T.sending}</>
-          ) : (
-            <>🧶 {lang === 'tr' ? 'ÇİZİMİ DOKULA' : 'WEAVE DRAWING'}</>
-          )}
-        </button>
+        {!showConfirm ? (
+          <button
+            id="send-trigger-btn"
+            onClick={() => setShowConfirm(true)}
+            disabled={sendState === 'sending'}
+            style={{
+              width: '100%', padding: '18px 20px', borderRadius: '16px',
+              border: 'none', marginBottom: '10px',
+              background: sendState === 'success'
+                ? 'linear-gradient(135deg, #2ecc71, #27ae60)'
+                : sendState === 'sending'
+                  ? 'linear-gradient(135deg, #95a5a6, #7f8c8d)'
+                  : 'linear-gradient(135deg, #ffd700 0%, #ff8c00 50%, #ffd700 100%)',
+              backgroundSize: sendState === 'idle' ? '200% auto' : '100% auto',
+              animation: sendState === 'idle'
+                ? 'shimmer 2.5s linear infinite'
+                : sendState === 'success'
+                  ? 'successPop 0.6s ease'
+                  : 'none',
+              color: sendState === 'success' ? '#fff' : '#1a0a00',
+              fontWeight: '900', fontSize: '16px', fontFamily: 'inherit',
+              cursor: sendState === 'sending' ? 'wait' : 'pointer',
+              boxShadow: sendState === 'success'
+                ? '0 6px 25px rgba(46,204,113,0.4)'
+                : '0 6px 25px rgba(255,215,0,0.3)',
+              letterSpacing: '0.5px',
+              transition: 'background 0.4s, box-shadow 0.4s, color 0.4s',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+            }}>
+            {sendState === 'success' ? (
+              <>✈️ {lang === 'tr' ? 'HALIYA UÇUYOR!' : 'FLYING TO CARPET!'}</>
+            ) : sendState === 'sending' ? (
+              <>⏳ {T.sending}</>
+            ) : (
+              <>🧶 {lang === 'tr' ? 'ÇİZİMİ DOKULA' : 'WEAVE DRAWING'}</>
+            )}
+          </button>
+        ) : (
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '10px', width: '100%', animation: 'bounceIn 0.3s ease' }}>
+            <button
+              onClick={() => { setShowConfirm(false); sendDrawing(); }}
+              style={{
+                flex: 2, padding: '14px', borderRadius: '16px', border: 'none',
+                background: 'linear-gradient(135deg, #2ecc71, #27ae60)',
+                color: '#fff', fontWeight: '800', fontSize: '15px', fontFamily: 'inherit',
+                cursor: 'pointer', boxShadow: '0 4px 15px rgba(46,204,113,0.3)',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px'
+              }}
+            >
+              <span style={{ fontSize: '11px', opacity: 0.9 }}>{lang === 'tr' ? 'Emin misin?' : 'Are you sure?'}</span>
+              <span>✅ {lang === 'tr' ? 'EVET, DOKULA' : 'YES, WEAVE IT'}</span>
+            </button>
+            <button
+               onClick={() => setShowConfirm(false)}
+               style={{
+                 flex: 1, padding: '14px', borderRadius: '16px', border: '1px solid rgba(255,59,48,0.4)',
+                 background: 'rgba(255,59,48,0.1)', color: '#ff6b6b', fontWeight: '800', fontSize: '13px',
+                 fontFamily: 'inherit', cursor: 'pointer', transition: 'all 0.3s',
+                 display: 'flex', alignItems: 'center', justifyContent: 'center'
+               }}
+            >
+               <span>❌ İPTAL</span>
+            </button>
+          </div>
+        )}
 
         {/* Temizle */}
         <button onClick={clearCanvas} style={{
