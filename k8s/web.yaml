@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hali-mozaik-web
+  namespace: hali-mozaik
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hali-mozaik-web
+  template:
+    metadata:
+      labels:
+        app: hali-mozaik-web
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: web
+          image: ghcr.io/ayavuzer/hali-mozaik-web:v15.2.1
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 200m
+              memory: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hali-mozaik-web
+  namespace: hali-mozaik
+spec:
+  selector:
+    app: hali-mozaik-web
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80

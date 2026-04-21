@@ -18,6 +18,8 @@ metadata:
   namespace: hali-mozaik
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: hali-mozaik-socket
@@ -30,7 +32,7 @@ spec:
         - name: ghcr-secret
       containers:
         - name: socket
-          image: ghcr.io/ayavuzer/hali-mozaik-socket:v13.2.5
+          image: ghcr.io/ayavuzer/hali-mozaik-socket:v15.1.2
           imagePullPolicy: Always
           ports:
             - containerPort: 3003
@@ -43,6 +45,8 @@ spec:
               value: https://hali-mozaik.mindops.net
             - name: MOTIFS_DIR
               value: /data/motifs
+            - name: ADMIN_PIN_REQUIRED
+              value: "false"
           resources:
             requests:
               cpu: 100m

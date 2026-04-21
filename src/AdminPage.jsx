@@ -407,7 +407,8 @@ function DrawingCard({ drawing, selected, onSelect, onPreview, serverUrl }) {
 // ANA ADMIN PANELİ (PREMIUM LAYOUT)
 // ═══════════════════════════════════════════════════
 export default function AdminPage() {
-    const [authed, setAuthed] = useState(() => !!localStorage.getItem('admin-pin'));
+    const [authed, setAuthed] = useState(false);
+    const [authChecking, setAuthChecking] = useState(true);
     const [drawings, setDrawings] = useState([]);
     const [stats, setStats] = useState(null);
     const [aiStatus, setAiStatus] = useState(null);
@@ -447,6 +448,14 @@ export default function AdminPage() {
         setTimeout(() => setToasts(p => p.filter(t => t.id !== id)), 4000);
     }, []);
 
+    const bootstrapAdminData = useCallback((pin = '') => {
+        const socket = socketRef.current;
+        if (!socket) return;
+        socket.emit('admin:get-stats', { pin });
+        socket.emit('admin:get-activity', { pin });
+        socket.emit('admin:get-events', { pin });
+    }, []);
+
     // Socket bağlantısı
     useEffect(() => {
         const socketUrl = window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')
@@ -457,16 +466,17 @@ export default function AdminPage() {
         socketRef.current = socket;
 
         socket.on('connect', () => {
-            const savedPin = localStorage.getItem('admin-pin');
-            if (savedPin) {
-                socket.emit('admin:auth', { pin: savedPin });
-                socket.emit('admin:get-stats', { pin: savedPin });
-            }
+            const savedPin = localStorage.getItem('admin-pin') || '';
+            pinRef.current = savedPin;
+            setAuthChecking(true);
+            socket.emit('admin:auth', { pin: savedPin });
         });
 
         socket.on('admin:auth-result', ({ success }) => {
+            setAuthChecking(false);
             if (success) {
                 setAuthed(true);
+                bootstrapAdminData(pinRef.current || '');
             } else {
                 setAuthed(false);
                 localStorage.removeItem('admin-pin');
@@ -530,20 +540,22 @@ export default function AdminPage() {
         });
 
         return () => socket.close();
-    }, [addToast]);
+    }, [addToast, bootstrapAdminData]);
 
     const handleAuth = (inputPin, callback) => {
         pinRef.current = inputPin;
         const socket = socketRef.current;
         if (!socket || !socket.connected) return callback(false);
 
+        setAuthChecking(true);
         socket.emit('admin:auth', { pin: inputPin });
         const onResult = ({ success }) => {
             socket.off('admin:auth-result', onResult);
+            setAuthChecking(false);
             if (success) {
                 setAuthed(true);
                 localStorage.setItem('admin-pin', inputPin);
-                socket.emit('admin:get-stats', { pin: inputPin });
+                bootstrapAdminData(inputPin);
                 socket.emit('admin:get-archive', { pin: inputPin });
                 socket.emit('admin:get-sessions', { pin: inputPin });
                 socket.emit('admin:get-users', { pin: inputPin });
@@ -630,10 +642,32 @@ export default function AdminPage() {
     const logout = () => {
         localStorage.removeItem('admin-pin');
         setAuthed(false);
+        setAuthChecking(false);
         pinRef.current = '';
+        window.location.href = '/';
     };
 
     const openPreview = (src, title) => setPreviewModal({ isOpen: true, src, title });
+
+    if (authChecking) return (
+        <>
+            <div style={{
+                minHeight: '100vh',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: THEME.bgGradient,
+                color: THEME.text,
+                fontFamily: "'Inter', sans-serif"
+            }}>
+                <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: 42, marginBottom: 16 }}>🧵</div>
+                    <div style={{ fontSize: 18, fontWeight: 700 }}>Admin workspace aciliyor...</div>
+                </div>
+            </div>
+            <ToastContainer toasts={toasts} />
+        </>
+    );
 
     if (!authed) return (
         <>
@@ -738,9 +772,9 @@ export default function AdminPage() {
                     {menuItems.map(item => (
                         <button type="button" key={item.id} onClick={() => {
                             setActiveMenu(item.id);
-                            const pin = pinRef.current;
+                            const pin = pinRef.current || '';
                             const socket = socketRef.current;
-                            if (!socket || !pin) return;
+                            if (!socket) return;
                             // Sekmeye özel veri yükle
                             if (item.id === 'archive') {
                                 socket.emit('admin:get-archive', { pin });

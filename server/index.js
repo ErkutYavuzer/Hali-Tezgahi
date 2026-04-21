@@ -767,8 +767,10 @@ io.on('connection', (socket) => {
   // ═══════════════════════════════════════════════════
 
   const ADMIN_PIN = process.env.ADMIN_PIN || '1234';
+  const ADMIN_PIN_REQUIRED = (process.env.ADMIN_PIN_REQUIRED ?? 'true') !== 'false';
 
-  function verifyAdmin(pin) {
+  function verifyAdmin(pin = '') {
+    if (!ADMIN_PIN_REQUIRED) return true;
     return pin === ADMIN_PIN;
   }
 
@@ -792,7 +794,7 @@ io.on('connection', (socket) => {
       // İlk veriyi gönder
       socket.emit('initial-carpet', { drawings });
       socket.emit('ai-status', getAIStatus());
-      console.log(`🔐 Admin giriş başarılı: ${socket.id}`);
+      console.log(`🔐 Admin giriş başarılı: ${socket.id}${ADMIN_PIN_REQUIRED ? '' : ' (passwordless)'}`);
     } else {
       socket.isAdmin = false;
       socket.emit('admin:auth-result', { success: false, error: 'Yanlış PIN' });
